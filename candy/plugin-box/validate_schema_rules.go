@@ -243,3 +243,4 @@ func bakePluginSibling(candies map[string]spec.CandyReader, candy spec.CandyRead
 }
 
 // dedup: see validate_schema_rules.go bakePluginSibling
+// dedup: see bakePluginSibling (name-scoped, live-proofed)
