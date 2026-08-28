@@ -27,7 +27,6 @@ package box
 
 import (
 	"context"
-
 	"os"
 	"path/filepath"
 	"strings"
@@ -242,4 +241,5 @@ func bakePluginSibling(candies map[string]spec.CandyReader, candy spec.CandyRead
 	}
 	return false
 }
+
 // dedup: see validate_schema_rules.go bakePluginSibling
