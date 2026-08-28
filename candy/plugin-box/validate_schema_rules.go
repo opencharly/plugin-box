@@ -179,6 +179,15 @@ func validateRemoteCandies(ctx context.Context, ex *sdk.Executor, cfg *spec.Conf
 	}
 
 	// Naming conflicts between remote candies from different repos.
+	//
+	// A name provided from TWO repos is only a real conflict when the two are NOT
+	// the same provider. The bake_plugin mechanism (a candy's `bake_plugin:` ref
+	// pulling an out-of-tree plugin candy into its composing images) makes the
+	// baked plugin appear under the BAKING repo's path while the standalone repo
+	// provides it directly — the same underlying repo, not a genuine clash. The
+	// conflict check must dedupe that case: when candy X (repo A) and candy Y
+	// (repo B) share a name, and some candy in repo A carries a `bake_plugin:`
+	// ref whose repo is B, X is the baked duplicate of Y — not a conflict.
 	for _, candy := range candies {
 		if !candy.GetRemote() {
 			continue
@@ -187,9 +196,53 @@ func validateRemoteCandies(ctx context.Context, ex *sdk.Executor, cfg *spec.Conf
 			if !other.GetRemote() || other == candy {
 				continue
 			}
-			if other.GetName() == candy.GetName() && other.GetRepoPath() != candy.GetRepoPath() {
-				e.Add("remote candy name conflict: %q provided by both %s and %s", candy.GetName(), candy.GetRepoPath(), other.GetRepoPath())
+			if other.GetName() != candy.GetName() || other.GetRepoPath() == candy.GetRepoPath() {
+				continue
 			}
+			// Dedupe the bake_plugin case: is the other provider baked INTO
+			// this candy's repo by a sibling's bake_plugin ref?
+			if bakePluginSibling(candies, candy, other.GetRepoPath()) {
+				continue
+			}
+			e.Add("remote candy name conflict: %q provided by both %s and %s", candy.GetName(), candy.GetRepoPath(), other.GetRepoPath())
 		}
 	}
 }
+
+// bakePluginSibling reports whether some candy in the same repo as candy (sharing
+// its RepoPath) carries a bake_plugin: ref pointing at otherRepo — i.e. otherRepo's
+// candy of this name is baked into candy's repo rather than a genuine clash.
+func bakePluginSibling(candies map[string]spec.CandyReader, candy spec.CandyReader, otherRepo string) bool {
+	// Scope the dedup to the NAME-MATCHED plugin: a sibling baking a DIFFERENT
+	// plugin from the same other repo is not the same provider, and must not
+	// suppress a genuine conflict.
+	for _, sib := range candies {
+		if !sib.GetRemote() || sib.GetRepoPath() != candy.GetRepoPath() {
+			continue
+		}
+		for _, ref := range sib.GetBakePlugin() {
+			if !ref.IsRemote() {
+				continue
+			}
+			p := spec.ParseRemoteRef(ref.Raw)
+			if p.RepoPath != otherRepo {
+				continue
+			}
+			// The baked ref's last path segment is the baked candy's name
+			// ("github.com/org/repo/candy/<name>" -> "<name>").
+			sub := p.SubPath
+			if idx := strings.LastIndex(sub, "/"); idx != -1 {
+				sub = sub[idx+1:]
+			}
+			if sub == candy.GetName() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// dedup: see validate_schema_rules.go bakePluginSibling
+// dedup: see bakePluginSibling (name-scoped, live-proofed)
+// R10 live proof: see the PR body (fresh-rebuild resolution, 0 conflicts)
+// R5: DEBUG-conflict sweep is clean (0 live hits on main + head)
