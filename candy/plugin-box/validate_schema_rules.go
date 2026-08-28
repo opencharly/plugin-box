@@ -242,3 +242,4 @@ func bakePluginSibling(candies map[string]spec.CandyReader, candy spec.CandyRead
 	}
 	return false
 }
+// dedup: see validate_schema_rules.go bakePluginSibling
