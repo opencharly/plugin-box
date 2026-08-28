@@ -214,6 +214,9 @@ func validateRemoteCandies(ctx context.Context, ex *sdk.Executor, cfg *spec.Conf
 // its RepoPath) carries a bake_plugin: ref pointing at otherRepo — i.e. otherRepo's
 // candy of this name is baked into candy's repo rather than a genuine clash.
 func bakePluginSibling(candies map[string]spec.CandyReader, candy spec.CandyReader, otherRepo string) bool {
+	// Scope the dedup to the NAME-MATCHED plugin: a sibling baking a DIFFERENT
+	// plugin from the same other repo is not the same provider, and must not
+	// suppress a genuine conflict.
 	for _, sib := range candies {
 		if !sib.GetRemote() || sib.GetRepoPath() != candy.GetRepoPath() {
 			continue
@@ -223,7 +226,16 @@ func bakePluginSibling(candies map[string]spec.CandyReader, candy spec.CandyRead
 				continue
 			}
 			p := spec.ParseRemoteRef(ref.Raw)
-			if p.RepoPath == otherRepo {
+			if p.RepoPath != otherRepo {
+				continue
+			}
+			// The baked ref's last path segment is the baked candy's name
+			// ("github.com/org/repo/candy/<name>" -> "<name>").
+			sub := p.SubPath
+			if idx := strings.LastIndex(sub, "/"); idx != -1 {
+				sub = sub[idx+1:]
+			}
+			if sub == candy.GetName() {
 				return true
 			}
 		}

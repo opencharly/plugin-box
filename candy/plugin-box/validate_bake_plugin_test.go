@@ -53,3 +53,16 @@ func TestBakePluginSibling(t *testing.T) {
 		t.Fatal("bakePluginSibling should be false for unrelated repos")
 	}
 }
+
+func TestBakePluginSibling_ScopedToName(t *testing.T) {
+	// A sibling bakes a DIFFERENT plugin from the same other repo — must NOT dedupe.
+	candies := map[string]spec.CandyReader{
+		"charly/charly-mcp": &fakeReader{name: "charly-mcp", repoPath: "github.com/opencharly/charly", remote: true,
+			bake: []string{"@github.com/opencharly/plugin-mcp/candy/plugin-mcp:v1"}},
+	}
+	conflict := &fakeReader{name: "plugin-record", repoPath: "github.com/opencharly/charly", remote: true}
+	other := &fakeReader{name: "plugin-record", repoPath: "github.com/opencharly/plugin-record", remote: true}
+	if bakePluginSibling(candies, conflict, other.GetRepoPath()) {
+		t.Fatal("bakePluginSibling must be FALSE: the sibling bakes plugin-mcp, not plugin-record")
+	}
+}
