@@ -188,6 +188,16 @@ func validateRemoteCandies(ctx context.Context, ex *sdk.Executor, cfg *spec.Conf
 	// conflict check must dedupe that case: when candy X (repo A) and candy Y
 	// (repo B) share a name, and some candy in repo A carries a `bake_plugin:`
 	// ref whose repo is B, X is the baked duplicate of Y — not a conflict.
+	reportRemoteNameConflicts(candies, e)
+}
+
+// reportRemoteNameConflicts flags a candy NAME provided by two different repos.
+//
+// Extracted from validateRemoteCandies so the rule is reachable without the
+// network-touching ref collection that precedes it there. That prologue is why this
+// loop had no test of its own while its bakePluginSibling helper did — and the
+// directional-dedupe defect below lived in the loop, not the helper.
+func reportRemoteNameConflicts(candies map[string]spec.CandyReader, e *vErr) {
 	for _, candy := range candies {
 		if !candy.GetRemote() {
 			continue
@@ -199,9 +209,17 @@ func validateRemoteCandies(ctx context.Context, ex *sdk.Executor, cfg *spec.Conf
 			if other.GetName() != candy.GetName() || other.GetRepoPath() == candy.GetRepoPath() {
 				continue
 			}
-			// Dedupe the bake_plugin case: is the other provider baked INTO
-			// this candy's repo by a sibling's bake_plugin ref?
-			if bakePluginSibling(candies, candy, other.GetRepoPath()) {
+			// Dedupe the bake_plugin case: is EITHER provider baked into the
+			// other's repo by a sibling's bake_plugin ref?
+			//
+			// Both directions must be tested. This loop is symmetric — it visits
+			// (candy=A, other=B) and (candy=B, other=A) — but the bake relationship
+			// is not: only the BAKING repo holds the sibling carrying the ref.
+			// Testing one direction suppressed the visit where the baker was
+			// `candy` and let the mirrored visit through, so every baked plugin
+			// reported the identical conflict TWICE, in opposite orders.
+			if bakePluginSibling(candies, candy, other.GetRepoPath()) ||
+				bakePluginSibling(candies, other, candy.GetRepoPath()) {
 				continue
 			}
 			e.Add("remote candy name conflict: %q provided by both %s and %s", candy.GetName(), candy.GetRepoPath(), other.GetRepoPath())
