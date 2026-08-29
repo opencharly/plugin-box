@@ -264,7 +264,7 @@ func validatePortRelay(vc *vctx, e *vErr) {
 			if len(m.PortRelayPorts) > 0 {
 				hasRelay = true
 			}
-			if m.Name == "socat" {
+			if providesSocatRelay(m.Name) {
 				hasSocat = true
 			}
 		}
@@ -272,6 +272,23 @@ func validatePortRelay(vc *vctx, e *vErr) {
 			e.Add("box %q: has port_relay candies but missing \"socat\" candy (add it to the box candies or as a dependency)", boxName)
 		}
 	}
+}
+
+// providesSocatRelay reports whether a resolved candy is the one that ships the
+// port_relay wrapper.
+//
+// The candy DECLARES itself as `socat:`, but a candy's declared node name does not
+// survive a remote scan: a remote candy is named by its REPO, so the standalone
+// opencharly/layer-socat arrives as "layer-socat" and nothing in the resolved set is
+// ever named "socat". Matching only the bare name is pre-cutover vocabulary from when
+// socat lived inside charly as candy/socat — post-cutover it made this rule fire on
+// every box that composes the relay correctly (measured: the three openclaw boxes in
+// distro-cachyos, which DO pull layer-socat through pod-openclaw's require:).
+//
+// Both spellings are accepted: a project that still carries a LOCAL socat candy is
+// named "socat", and the standalone repo is named "layer-socat".
+func providesSocatRelay(candyName string) bool {
+	return candyName == "socat" || candyName == "layer-socat"
 }
 
 // validateDataCandies checks data src dirs exist + per-box data-volume references + data_image constraints.
