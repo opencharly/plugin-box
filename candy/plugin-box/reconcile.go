@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
@@ -55,6 +56,7 @@ func dispatchReconcile(args []string) error {
 	// Pass 1: collect, per repo, the set of pinned versions referenced anywhere.
 	refVersions := make(map[string]map[string]bool) // repoPath -> set of versions
 	roots := make(map[string]*yaml.Node)            // file -> document root (reused in pass 2)
+	sources := make(map[string][]byte)              // file -> ORIGINAL bytes (rewritten in pass 2)
 	for _, f := range files {
 		data, err := os.ReadFile(f)
 		if err != nil {
@@ -65,6 +67,7 @@ func dispatchReconcile(args []string) error {
 			return fmt.Errorf("parsing %s: %w", f, err)
 		}
 		roots[f] = &root
+		sources[f] = data
 		walkScalars(&root, func(s *yaml.Node) {
 			if !deploykit.IsRemoteCandyRef(s.Value) {
 				return
@@ -99,7 +102,7 @@ func dispatchReconcile(args []string) error {
 	var rewrites []rewrite
 	for _, f := range files {
 		root := roots[f]
-		fileChanged := false
+		var edits []pinEdit
 		walkScalars(root, func(s *yaml.Node) {
 			if !deploykit.IsRemoteCandyRef(s.Value) {
 				return
@@ -115,15 +118,12 @@ func dispatchReconcile(args []string) error {
 			stripped, _ := deploykit.StripVersion(s.Value)
 			newRef := stripped + ":" + want
 			rewrites = append(rewrites, rewrite{filepath.Base(f), s.Value, newRef})
-			if !g.DryRun {
-				s.Value = newRef
-			}
-			fileChanged = true
+			edits = append(edits, pinEdit{line: s.Line, from: s.Value, to: newRef})
 		})
-		if fileChanged && !g.DryRun {
-			out, err := yaml.Marshal(root)
+		if len(edits) > 0 && !g.DryRun {
+			out, err := applyPinEdits(sources[f], edits)
 			if err != nil {
-				return fmt.Errorf("serializing %s: %w", f, err)
+				return fmt.Errorf("rewriting %s: %w", f, err)
 			}
 			if err := os.WriteFile(f, out, 0o644); err != nil {
 				return fmt.Errorf("writing %s: %w", f, err)
@@ -233,4 +233,40 @@ func walkScalars(n *yaml.Node, fn func(*yaml.Node)) {
 	for _, c := range n.Content {
 		walkScalars(c, fn)
 	}
+}
+
+// pinEdit is one pin rewrite, located by the scalar node's 1-based line.
+type pinEdit struct {
+	line     int
+	from, to string
+}
+
+// applyPinEdits rewrites pins IN THE ORIGINAL BYTES, touching only the lines that carry a
+// changed ref.
+//
+// The obvious implementation — mutate the parsed nodes and yaml.Marshal the document — is what
+// this replaces, because it round-trips every OTHER node through the emitter. yaml.v3 re-wraps
+// block scalars to its own width rather than reproducing the authored line breaks, so a 4-pin
+// reconcile rewrote every `description:` in the file and produced a ~400-line diff across
+// unrelated entities. That makes the prescribed remedy for a version-mismatch warning unusable:
+// the diff it generates is itself a review blocker, and it silently reformats prose the author
+// wrote deliberately.
+//
+// A pin is always a single-line scalar, so a line-local replacement is both sufficient and
+// lossless — every byte the reconcile did not intend to change is preserved exactly.
+func applyPinEdits(src []byte, edits []pinEdit) ([]byte, error) {
+	lines := strings.Split(string(src), "\n")
+	for _, e := range edits {
+		if e.line < 1 || e.line > len(lines) {
+			return nil, fmt.Errorf("pin %q reported at line %d, outside the %d-line file", e.from, e.line, len(lines))
+		}
+		i := e.line - 1
+		if !strings.Contains(lines[i], e.from) {
+			// Refuse rather than guess: a position that does not hold the value means the node
+			// index and the bytes disagree, and a blind replace elsewhere would corrupt the file.
+			return nil, fmt.Errorf("pin %q not present on line %d", e.from, e.line)
+		}
+		lines[i] = strings.Replace(lines[i], e.from, e.to, 1)
+	}
+	return []byte(strings.Join(lines, "\n")), nil
 }
