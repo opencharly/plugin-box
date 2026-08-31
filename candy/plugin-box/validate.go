@@ -341,6 +341,7 @@ type validateSummary struct {
 	Deploys  int
 	Distros  int
 	Builders int
+	Warnings int
 }
 
 // String renders the one-line success verdict, e.g.
@@ -369,15 +370,16 @@ func (s validateSummary) String() string {
 	if len(parts) == 0 {
 		parts = append(parts, "nothing to check")
 	}
-	// Errors are ALWAYS shown, including zero: "0 errors" is the load-bearing half of the claim
-	// a PR body needs to make, and omitting it would read as though none were counted.
+	// Errors and warnings are ALWAYS shown, including zero: those two numbers are the claim a
+	// PR body needs to make, and omitting either would read as though it had not been counted.
 	//
-	// WARNINGS ARE DELIBERATELY NOT COUNTED HERE. Resolver warnings (candy version skew, for
-	// one) are written straight to stderr by sdk/loaderkit rather than raised as diagnostics,
-	// so this code cannot see them. An earlier draft of this line printed "0 warnings" on a run
-	// that had just emitted two — worse than printing nothing, because it reads as a cleared
-	// gate. Any warnings appear on stderr ABOVE this line; they are not summarised.
-	return "charly box validate: OK — checked " + strings.Join(parts, ", ") + "; 0 errors"
+	// The warning count is real. Scan advisories (candy-version skew, local-shadow notes) used
+	// to be written straight to stderr by sdk/loaderkit, which made them uncountable — an early
+	// draft of this line printed "0 warnings" on a run that had just emitted two. They now
+	// arrive as warning-severity diagnostics through spec.ScanSeams.Warn, so this counts the
+	// same set the reader sees above.
+	return fmt.Sprintf("charly box validate: OK — checked %s; %d %s, 0 errors",
+		strings.Join(parts, ", "), s.Warnings, pluralize(s.Warnings, "warning", "warnings"))
 }
 
 func pluralize(n int, one, many string) string {
@@ -387,9 +389,9 @@ func pluralize(n int, one, many string) string {
 	return many
 }
 
-// summarize counts what the run actually covered. It deliberately reports no warning tally —
-// see validateSummary.String for why that number cannot be computed here honestly.
-func summarize(project *spec.ResolvedProject, _ spec.Diagnostics) validateSummary {
+// summarize counts what the run actually covered. Warnings come from the merged diagnostics,
+// so the number reflects the same set the error verdict filtered out — not a separate tally.
+func summarize(project *spec.ResolvedProject, diags spec.Diagnostics) validateSummary {
 	var s validateSummary
 	if project != nil {
 		s.Candies = len(project.Candies)
@@ -397,6 +399,11 @@ func summarize(project *spec.ResolvedProject, _ spec.Diagnostics) validateSummar
 		s.Deploys = len(project.Deploy)
 		s.Distros = len(project.Distro)
 		s.Builders = len(project.Builder)
+	}
+	for _, it := range diags.Items {
+		if it.Severity == "warning" {
+			s.Warnings++
+		}
 	}
 	return s
 }

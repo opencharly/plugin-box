@@ -14,9 +14,9 @@ import (
 // "it passed", and a reviewer asking for pasted output has nothing to read. These guards pin the
 // success line's shape so it stays quotable.
 func TestValidateSummaryLine(t *testing.T) {
-	s := validateSummary{Candies: 42, Boxes: 7, Deploys: 3, Distros: 2, Builders: 1}
+	s := validateSummary{Candies: 42, Boxes: 7, Deploys: 3, Distros: 2, Builders: 1, Warnings: 0}
 	got := s.String()
-	want := "charly box validate: OK — checked 42 candies, 7 boxes, 3 deploys, 2 distros, 1 builder; 0 errors"
+	want := "charly box validate: OK — checked 42 candies, 7 boxes, 3 deploys, 2 distros, 1 builder; 0 warnings, 0 errors"
 	if got != want {
 		t.Errorf("summary line\n got: %q\nwant: %q", got, want)
 	}
@@ -27,7 +27,7 @@ func TestValidateSummaryLine(t *testing.T) {
 // is the load-bearing half of the claim, and omitting it would read as though none were counted.
 func TestValidateSummaryOmitsEmptyButAlwaysShowsWarnings(t *testing.T) {
 	got := validateSummary{Candies: 1}.String()
-	want := "charly box validate: OK — checked 1 candy; 0 errors"
+	want := "charly box validate: OK — checked 1 candy; 0 warnings, 0 errors"
 	if got != want {
 		t.Errorf("single-candy summary\n got: %q\nwant: %q", got, want)
 	}
@@ -36,21 +36,22 @@ func TestValidateSummaryOmitsEmptyButAlwaysShowsWarnings(t *testing.T) {
 	}
 }
 
-// Resolver warnings (candy version skew, for one) are written straight to stderr by
-// sdk/loaderkit and never become diagnostics, so this code cannot see them. An earlier draft
-// printed "0 warnings" on a run that had just emitted two — worse than silence, because it
-// reads as a cleared gate. This pins that the line never claims a warning tally.
-func TestValidateSummaryNeverClaimsAWarningCount(t *testing.T) {
+// The warning count must reflect the SAME diagnostics the error verdict filtered out, not a
+// separate tally. Scan advisories used to bypass diagnostics entirely (stderr writes in
+// sdk/loaderkit), so an early version of this line printed "0 warnings" on a run that had just
+// emitted two; they now arrive as warning-severity items via spec.ScanSeams.Warn.
+func TestValidateSummaryCountsWarningsFromTheSameDiagnostics(t *testing.T) {
 	diags := spec.Diagnostics{Items: []spec.Diagnostic{
 		{Severity: "warning", Message: "candy X resolved to multiple versions"},
-		{Severity: "warning", Message: "another"},
+		{Severity: "warning", Message: "local candy shadows remote"},
+		{Severity: "error", Message: "a real failure"},
 	}}
-	line := summarize(&spec.ResolvedProject{Candies: map[string]spec.CandyView{"a": {}}}, diags).String()
-	if strings.Contains(line, "warning") {
-		t.Errorf("summary must not claim a warning count it cannot compute, got %q", line)
+	s := summarize(&spec.ResolvedProject{}, diags)
+	if s.Warnings != 2 {
+		t.Errorf("Warnings = %d, want 2 (errors must not be counted as warnings)", s.Warnings)
 	}
-	if !strings.Contains(line, "0 errors") {
-		t.Errorf("summary must state the error count, got %q", line)
+	if !strings.Contains(s.String(), "2 warnings") {
+		t.Errorf("the line must report the real count, got %q", s.String())
 	}
 }
 
@@ -90,7 +91,7 @@ func TestValidateSummaryIsActuallyPrintedOnSuccess(t *testing.T) {
 		t.Fatalf("clean diagnostics must not error: %v", verr)
 	}
 	got := strings.TrimSpace(buf.String())
-	want := "charly box validate: OK — checked 2 candies, 1 box; 0 errors"
+	want := "charly box validate: OK — checked 2 candies, 1 box; 0 warnings, 0 errors"
 	if got != want {
 		t.Errorf("stdout\n got: %q\nwant: %q", got, want)
 	}
