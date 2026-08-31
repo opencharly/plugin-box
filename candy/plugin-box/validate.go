@@ -49,11 +49,11 @@ func dispatchValidate(hc *hostClient, args []string) error {
 	if err != nil {
 		return err
 	}
-	merged, err := runValidateEngine(hc.ctx, hc.exec, dir, g.IncludeDisabled)
+	merged, summary, err := runValidateEngine(hc.ctx, hc.exec, dir, g.IncludeDisabled)
 	if err != nil {
 		return err
 	}
-	return emitVerdict(merged)
+	return emitVerdict(merged, summary)
 }
 
 // runValidateEngine fetches the error-TOLERANT resolved-project envelope via build:project's
@@ -68,20 +68,20 @@ func dispatchValidate(hc *hostClient, args []string) error {
 // The former "validate-project-checks" HostBuild leg is GONE: it made the host re-load and re-scan
 // the whole project just to run three validators over data this plugin already held — the boundary
 // law's re-derivation R-pattern. Only the registry question crosses now.
-func runValidateEngine(ctx context.Context, exec *sdk.Executor, dir string, includeDisabled bool) (spec.Diagnostics, error) {
+func runValidateEngine(ctx context.Context, exec *sdk.Executor, dir string, includeDisabled bool) (spec.Diagnostics, validateSummary, error) {
 	reqJSON, err := json.Marshal(spec.ValidateProjectRequest{Dir: dir, IncludeDisabled: includeDisabled})
 	if err != nil {
-		return spec.Diagnostics{}, err
+		return spec.Diagnostics{}, validateSummary{}, err
 	}
 
 	envJSON, err := exec.InvokeProvider(ctx, "build", "project", sdk.OpValidate, reqJSON, nil, sdk.InvokeProviderOpts{})
 	if err != nil {
-		return spec.Diagnostics{}, fmt.Errorf("box validate: build:project resolve: %w", err)
+		return spec.Diagnostics{}, validateSummary{}, fmt.Errorf("box validate: build:project resolve: %w", err)
 	}
 	var envReply spec.ValidateProjectReply
 	if len(envJSON) > 0 {
 		if uerr := json.Unmarshal(envJSON, &envReply); uerr != nil {
-			return spec.Diagnostics{}, fmt.Errorf("box validate: decode build:project reply: %w", uerr)
+			return spec.Diagnostics{}, validateSummary{}, fmt.Errorf("box validate: decode build:project reply: %w", uerr)
 		}
 	}
 
@@ -91,7 +91,7 @@ func runValidateEngine(ctx context.Context, exec *sdk.Executor, dir string, incl
 	}
 	wordSets, err := fetchValidateWordSets(ctx, exec, project)
 	if err != nil {
-		return spec.Diagnostics{}, err
+		return spec.Diagnostics{}, validateSummary{}, err
 	}
 	project.ProviderCapabilities = wordSets.ProviderCapabilities
 	project.ActCapableVerbs = wordSets.ActCapableVerbs
@@ -117,7 +117,7 @@ func runValidateEngine(ctx context.Context, exec *sdk.Executor, dir string, incl
 	for _, m := range e.msgs {
 		merged.Items = append(merged.Items, spec.Diagnostic{Severity: "error", Message: m})
 	}
-	return merged, nil
+	return merged, summarize(project, merged), nil
 }
 
 // validateWordSetsBuilderKind is the F11 host-builder kind the host answers the registry-D word
@@ -329,11 +329,83 @@ func runAllValidations(vc *vctx, e *vErr) {
 }
 
 // emitVerdict returns the MERGED diagnostics (from runValidateEngine) as a plain error in the
+// validateSummary is what `charly box validate` reports when it finds nothing wrong.
+//
+// A gate that prints NOTHING on success cannot be used as evidence: a PR body can only assert
+// "it passed", and a reviewer asking for pasted output has nothing to read. That is a real gap
+// — every other gate in this project (task verify, the check beds) names what it proved. So
+// success now states the shape of what was checked, in one line that can be pasted verbatim.
+type validateSummary struct {
+	Candies  int
+	Boxes    int
+	Deploys  int
+	Distros  int
+	Builders int
+}
+
+// String renders the one-line success verdict, e.g.
+//
+//	charly box validate: OK — 42 candies, 7 boxes, 3 deploys, 2 distros, 1 builder, 0 warnings
+//
+// Zero-valued collections are omitted so a small candy repo reads cleanly rather than padding
+// the line with "0 boxes, 0 deploys".
+func (s validateSummary) String() string {
+	parts := make([]string, 0, 6)
+	add := func(n int, one, many string) {
+		if n == 0 {
+			return
+		}
+		if n == 1 {
+			parts = append(parts, fmt.Sprintf("%d %s", n, one))
+			return
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", n, many))
+	}
+	add(s.Candies, "candy", "candies")
+	add(s.Boxes, "box", "boxes")
+	add(s.Deploys, "deploy", "deploys")
+	add(s.Distros, "distro", "distros")
+	add(s.Builders, "builder", "builders")
+	if len(parts) == 0 {
+		parts = append(parts, "nothing to check")
+	}
+	// Errors are ALWAYS shown, including zero: "0 errors" is the load-bearing half of the claim
+	// a PR body needs to make, and omitting it would read as though none were counted.
+	//
+	// WARNINGS ARE DELIBERATELY NOT COUNTED HERE. Resolver warnings (candy version skew, for
+	// one) are written straight to stderr by sdk/loaderkit rather than raised as diagnostics,
+	// so this code cannot see them. An earlier draft of this line printed "0 warnings" on a run
+	// that had just emitted two — worse than printing nothing, because it reads as a cleared
+	// gate. Any warnings appear on stderr ABOVE this line; they are not summarised.
+	return "charly box validate: OK — checked " + strings.Join(parts, ", ") + "; 0 errors"
+}
+
+func pluralize(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+// summarize counts what the run actually covered. It deliberately reports no warning tally —
+// see validateSummary.String for why that number cannot be computed here honestly.
+func summarize(project *spec.ResolvedProject, _ spec.Diagnostics) validateSummary {
+	var s validateSummary
+	if project != nil {
+		s.Candies = len(project.Candies)
+		s.Boxes = len(project.Boxes)
+		s.Deploys = len(project.Deploy)
+		s.Distros = len(project.Distro)
+		s.Builders = len(project.Builder)
+	}
+	return s
+}
+
 // core ValidationError.Error() format when any error-severity finding is present (else nil → exit 0):
 // "validation error: <m>" for one, "N validation errors:\n\n  <joined by \n  >" for many. The host
 // wraps it `command "validate": …` and Kong prints the `charly: error:` decoration + exits 1 —
 // identical to how generate/pkg surface a failure.
-func emitVerdict(diags spec.Diagnostics) error {
+func emitVerdict(diags spec.Diagnostics, summary validateSummary) error {
 	msgs := make([]string, 0, len(diags.Items))
 	for _, it := range diags.Items {
 		if it.Severity == "warning" {
@@ -342,6 +414,8 @@ func emitVerdict(diags spec.Diagnostics) error {
 		msgs = append(msgs, it.Message)
 	}
 	if len(msgs) == 0 {
+		// Success SAYS something. See validateSummary: a silent gate cannot be evidence.
+		fmt.Println(summary.String())
 		return nil
 	}
 	// Return the verdict as a PLAIN error in the EXACT format core ValidationError.Error() uses (the

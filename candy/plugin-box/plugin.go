@@ -205,7 +205,9 @@ func (provider) Invoke(ctx context.Context, req *pb.InvokeRequest) (*pb.InvokeRe
 			}
 			dir = d
 		}
-		diags, verr := runValidateEngine(ctx, exec, dir, vreq.IncludeDisabled)
+		// The structured Invoke(OpValidate) leg consumes diagnostics only; the human-facing
+		// summary belongs to the CLI verdict, so it is discarded here rather than serialised.
+		diags, _, verr := runValidateEngine(ctx, exec, dir, vreq.IncludeDisabled)
 		if verr != nil {
 			return nil, verr
 		}
