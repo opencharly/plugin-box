@@ -413,6 +413,17 @@ func summarize(project *spec.ResolvedProject, diags spec.Diagnostics) validateSu
 // wraps it `command "validate": …` and Kong prints the `charly: error:` decoration + exits 1 —
 // identical to how generate/pkg surface a failure.
 func emitVerdict(diags spec.Diagnostics, summary validateSummary) error {
+	// Warnings are PRINTED, not merely counted. Routing the scan's advisories into diagnostics
+	// made them countable, but this function skipped them on the way out -- so a run that had
+	// warnings reported a number and never said WHAT they were. That is worse than the stderr
+	// writes it replaced: those were at least actionable. A count nobody can act on is not a
+	// gate. They go to stderr so stdout stays the machine-readable verdict.
+	for _, it := range diags.Items {
+		if it.Severity == "warning" {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", it.Message)
+		}
+	}
+
 	msgs := make([]string, 0, len(diags.Items))
 	for _, it := range diags.Items {
 		if it.Severity == "warning" {
