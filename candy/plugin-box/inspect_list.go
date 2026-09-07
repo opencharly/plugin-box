@@ -98,7 +98,7 @@ func dispatchInspect(hc *hostClient, args []string) error {
 	}
 
 	// tunnel/bind_mounts read the DEPLOY OVERLAY (charly.yml), not the build-mode envelope. The
-	// deploy-overlay volume/tunnel state is a pure sdk read (loaderkit.LoadHostFleetConfigViaExecutor,
+	// deploy-overlay volume/tunnel state is a pure sdk read (loaderkit.LoadHostDeployConfigViaExecutor,
 	// the cycle-free plugin-side overlay read); the tunnel resolution's published-port set is the
 	// projector-filled box-aggregate view.Ports (deploykit.TunnelConfigFromMetadata resolves off the
 	// overlay Tunnel + that port set, no candy graph), so no host reentry / project reload is needed
@@ -125,7 +125,7 @@ func dispatchInspect(hc *hostClient, args []string) error {
 // read of the deploy state (no build-mode envelope). Ported byte-identically from the former core
 // InspectOverlayCmd (K5 seam-death — the hidden __box-inspect-overlay reentry is DELETED).
 func inspectBindMounts(ctx context.Context, ex *sdk.Executor, box, instance string) error {
-	if dc, derr := loaderkit.LoadHostFleetConfigViaExecutor(ctx, ex); derr == nil && dc != nil {
+	if dc, derr := loaderkit.LoadHostDeployConfigViaExecutor(ctx, ex); derr == nil && dc != nil {
 		if overlay, ok := dc.Lookup(box, instance); ok {
 			for _, dv := range overlay.Volume {
 				fmt.Printf("%s\t%s\t%s\t%s\n", dv.Name, dv.Host, dv.Path, dv.Type)
@@ -140,7 +140,7 @@ func inspectBindMounts(ctx context.Context, ex *sdk.Executor, box, instance stri
 // projector-filled view.Ports) via deploykit.TunnelConfigFromMetadata (a BoxMetadata built from the
 // overlay's Tunnel + that port set). Ported byte-identically from the former core InspectOverlayCmd.
 func inspectTunnel(ctx context.Context, ex *sdk.Executor, box, instance string, boxPorts []string) error {
-	dc, derr := loaderkit.LoadHostFleetConfigViaExecutor(ctx, ex)
+	dc, derr := loaderkit.LoadHostDeployConfigViaExecutor(ctx, ex)
 	if derr != nil || dc == nil {
 		return nil
 	}
