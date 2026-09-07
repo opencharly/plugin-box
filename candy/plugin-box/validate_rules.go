@@ -669,6 +669,8 @@ func validateSingleTask(candyName string, idx int, verb string, t *spec.Op, know
 		validateCopyTask(candyName, idx, t, e)
 	case "write":
 		validateWriteTask(candyName, idx, t, e)
+	case "config":
+		validateConfigTask(candyName, idx, t, e)
 	case "link":
 		validateLinkTask(candyName, idx, t, e)
 	case "download":
@@ -683,6 +685,7 @@ func validateSingleTask(candyName string, idx int, verb string, t *spec.Op, know
 		"mkdir":    t.Mkdir,
 		"copy":     t.Copy,
 		"write":    t.Write,
+		"config":   t.Config,
 		"link":     t.Link,
 		"target":   t.Target,
 		"to":       t.To,
@@ -695,6 +698,15 @@ func validateSingleTask(candyName string, idx int, verb string, t *spec.Op, know
 		}
 		if unresolved := deploykit.TaskUnresolvedRefs(val, known); len(unresolved) > 0 {
 			e.Add("candy %q: tasks[%d]: %s references unknown ${VAR}: %s (declare in vars: or use an auto-export)", candyName, idx, field, strings.Join(unresolved, ", "))
+		}
+	}
+	// config: content IS substituted at generate time (unlike write: bodies),
+	// so its ${VAR} references must resolve against the same known set — an
+	// unresolved reference would fail at generate time anyway; catching it at
+	// validate time gives the author the exact field name.
+	if verb == "config" && t.Content != "" {
+		if unresolved := deploykit.TaskUnresolvedRefs(t.Content, known); len(unresolved) > 0 {
+			e.Add("candy %q: tasks[%d]: config content references unknown ${VAR}: %s (declare in vars: or use an auto-export)", candyName, idx, strings.Join(unresolved, ", "))
 		}
 	}
 }
@@ -718,6 +730,15 @@ func validateCopyTask(candyName string, idx int, t *spec.Op, e *vErr) {
 		e.Add("candy %q: tasks[%d]: copy: requires to: destination", candyName, idx)
 	} else if !isAbsOrHomePath(t.To) {
 		e.Add("candy %q: tasks[%d]: copy to: %q must be an absolute path or start with ~/ / ${HOME}", candyName, idx, t.To)
+	}
+}
+
+func validateConfigTask(candyName string, idx int, t *spec.Op, e *vErr) {
+	if !isAbsOrHomePath(t.Config) {
+		e.Add("candy %q: tasks[%d]: config: %q must be an absolute path or start with ~/ / ${HOME}", candyName, idx, t.Config)
+	}
+	if t.Content == "" {
+		e.Add("candy %q: tasks[%d]: config: requires non-empty content (the rendered file body)", candyName, idx)
 	}
 }
 
