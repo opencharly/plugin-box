@@ -89,7 +89,7 @@ func validateCandyContents(vc *vctx, e *vErr) {
 			case checkSteps == 0:
 				e.Add("candy %q: `plan:` must contain at least one `check:` step so the agentless check has something to verify. See /charly-check:check", name)
 			default:
-				for _, issue := range validatePlanStepsPure(v.Description, m.Plan, "candy "+name) {
+				for _, issue := range kit.ValidatePlanSteps(v.Description, m.Plan, "candy "+name) {
 					e.Add("%s", issue)
 				}
 			}
@@ -152,14 +152,18 @@ func validateCandyContents(vc *vctx, e *vErr) {
 	}
 }
 
-// validPluginClasses is the closed provider-class set (mirrors core providerClasses, provider.go) —
-// the classes a candy's `plugin.providers:` capability may name. Copied across the module boundary
-// (a small static set, like the other pure helpers); the plugin cannot import charly core.
-var validPluginClasses = map[string]bool{
-	"kind": true, "verb": true, "deploy": true, "step": true,
-	"builder": true, "command": true, "build": true, "loader": true, "refs": true,
-	"agent-runtime": true, "terminal": true,
-}
+// validPluginClasses is the closed provider-class set — the classes a candy's
+// `plugin.providers:` capability may name. DERIVED from spec.ProviderClasses (the ONE
+// CUE-owned vocabulary, #ProviderClassNames in spec/schema/candy.cue) instead of a
+// hand-maintained copy (F4.2 parser consolidation — the former byte-identical
+// charly/provider.go map is deleted in its own PR).
+var validPluginClasses = func() map[string]bool {
+	m := make(map[string]bool, len(spec.ProviderClasses))
+	for _, c := range spec.ProviderClasses {
+		m[c] = true
+	}
+	return m
+}()
 
 // splitPluginCapability splits a `<class>:<word>` capability, mirroring core splitCapability
 // (provider.go): the class must be non-empty, the word non-empty, and the class a known one.
@@ -786,34 +790,6 @@ func validateBuildTask(candyName string, idx int, t *spec.Op, e *vErr) {
 
 // --- pure helpers (copied verbatim across the core/plugin module boundary) ---
 
-// validatePlanStepsPure is the shared static plan-block validator (former charly plan_validate.go):
-// description non-empty; each step exactly one keyword; run/check carry one Op verb, agent-* carry none.
-func validatePlanStepsPure(desc string, plan []spec.Step, eid string) []string {
-	var errs []string
-	if strings.TrimSpace(desc) == "" {
-		errs = append(errs, fmt.Sprintf("%s: description is empty", eid))
-	}
-	for i := range plan {
-		step := plan[i]
-		kw, err := step.StepKind()
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: step %d: %v", eid, i, err))
-			continue
-		}
-		switch kw {
-		case kit.KwRun, kit.KwCheck:
-			if _, verbErr := step.Kind(); verbErr != nil {
-				errs = append(errs, fmt.Sprintf("%s: step %d (%s): %v", eid, i, kw, verbErr))
-			}
-		case kit.KwAgentRun, kit.KwAgentCheck:
-			if _, verbErr := step.Kind(); verbErr == nil {
-				errs = append(errs, fmt.Sprintf("%s: step %d (%s): agent steps must not carry an Op verb", eid, i, kw))
-			}
-		}
-	}
-	return errs
-}
-
 // candyHasInstallFiles replicates the core Candy.HasInstallFiles predicate from the envelope (package
 // sections / manifests / tasks / apk / extract) — NOT the adapter's broad HasContent (which counts plan
 // steps every ADE candy has, so it would never flag a content-less candy). `extract:` counts: it is a
@@ -914,43 +890,9 @@ func stripPortTemplate(s, prefix, suffix string) string {
 	}
 }
 
-// parsedRef + parseRemoteRef mirror the pure charly refs.go remote-ref parser (repo/sub-path/name/
-// version split) used only for the "remote candy not found" diagnostic wording.
-type parsedRef struct {
-	Raw      string
-	RepoPath string
-	SubPath  string
-	Name     string
-	Version  string
-}
-
-func parseRemoteRef(ref string) *parsedRef {
-	raw := ref
-	ref = strings.TrimPrefix(ref, "@")
-	version := ""
-	if idx := strings.LastIndex(ref, ":"); idx != -1 {
-		version = ref[idx+1:]
-		ref = ref[:idx]
-	}
-	repoPath, subPath, name := splitRepoAndSubPath(ref)
-	return &parsedRef{Raw: raw, RepoPath: repoPath, SubPath: subPath, Name: name, Version: version}
-}
-
-func splitRepoAndSubPath(ref string) (repoPath, subPath, name string) {
-	parts := strings.SplitN(ref, "/", 4)
-	if len(parts) < 4 {
-		name = parts[len(parts)-1]
-		if len(parts) <= 1 {
-			return "", "", name
-		}
-		return strings.Join(parts, "/"), "", name
-	}
-	repoPath = strings.Join(parts[:3], "/")
-	subPath = parts[3]
-	if idx := strings.LastIndex(subPath, "/"); idx != -1 {
-		name = subPath[idx+1:]
-	} else {
-		name = subPath
-	}
-	return repoPath, subPath, name
+// parseRemoteRef is the canonical spec.ParseRemoteRef (F4.3 parser consolidation: the former
+// local mirror of the deleted charly refs.go parser is gone — the contract module owns the
+// one copy of the repo/sub-path/name/version split).
+func parseRemoteRef(ref string) *spec.ParsedRef {
+	return spec.ParseRemoteRef(ref)
 }
