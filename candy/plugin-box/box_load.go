@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"strings"
 
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/spec/container"
@@ -74,23 +73,21 @@ func dispatchLoad(args []string) error {
 	// in-container podman would otherwise default to.
 	podman := "podman --remote --url " + socketURL
 
-	// The probe jump MUST follow the engine ResolveContainer just returned. Hardcoding
-	// JumpPodmanExec while the load below honours `engine` makes the two halves address the
-	// venue through different binaries on a docker deploy: the load runs `docker exec` and
-	// the probes run `podman exec` against the same container. Both then fail at transport
-	// level — and VenueHasImage / VenueImageCorrupt both return FALSE on error, so the
-	// verified idempotency and the torn-overlay re-stream do not fail, they silently stop
-	// meaning anything. That is the safety property this verb advertises, going vacuous
-	// without a symptom. spec/exec/deploy_chain.go already pairs engine→jump this way; this
-	// was a wiring omission, not a design question.
-	engineJump := specexec.JumpPodmanExec
-	if strings.Contains(engine, "docker") {
-		engineJump = specexec.JumpDockerExec
-	}
-
+	// The probe jump MUST follow the engine ResolveContainer just returned. The engine is
+	// DATA on the jump (NestedJump.Engine) — the ONE JumpContainerExec arm builds
+	// `<engine> exec -i`, so the probe hop and the load below address the venue through
+	// the SAME resolved binary. A per-engine jump arm (the former JumpPodmanExec/
+	// JumpDockerExec) made the two halves address the venue through different binaries on
+	// a docker deploy: the load ran `docker exec` and the probes ran `podman exec`
+	// against the same container. Both then failed at transport level — and VenueHasImage
+	// / VenueImageCorrupt both return FALSE on error, so the verified idempotency and the
+	// torn-overlay re-stream did not fail, they silently stopped meaning anything. That is
+	// the safety property this verb advertises, going vacuous without a symptom.
+	// spec/exec/deploy_chain.go already pairs engine→jump this way; this was a wiring
+	// omission, not a design question.
 	ctx := context.Background()
 	venue := deploykit.ImageVenue{
-		Exec:      &specexec.NestedExecutor{Parent: specexec.ShellExecutor{}, Jump: specexec.NestedJump{Kind: engineJump, Target: name}},
+		Exec:      &specexec.NestedExecutor{Parent: specexec.ShellExecutor{}, Jump: specexec.NestedJump{Kind: specexec.JumpContainerExec, Engine: engine, Target: name}},
 		PodmanCmd: podman,
 		Rootless:  true,
 		Label:     "box load",
