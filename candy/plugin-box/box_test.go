@@ -13,19 +13,11 @@ import (
 	pb "github.com/opencharly/spec/proto"
 )
 
-// TestCommandParent_NestsUnderBox proves the provider declares the optional CommandParent()
-// interface buildUnitInProc detects to nest every command word under `box` (`charly box generate`
-// etc.), never at the CLI root.
-func TestCommandParent_NestsUnderBox(t *testing.T) {
-	if got := (provider{}).CommandParent(); got != "box" {
-		t.Fatalf("CommandParent() = %q, want %q", got, "box")
-	}
-}
-
-// TestNewMeta_DeclaresNestedCommands proves Describe advertises exactly the ten nested command
-// capabilities (generate/validate/new/pull/build/inspect/list/labels/merge/reconcile — "build"
-// added FINAL/K5 unit 6a M4d, the CLI-only mirror of "pull"'s M4c move), all class "command", each
-// with no InputDef (a command's args are pass-through tokens, not a structured plugin_input).
+// TestNewMeta_DeclaresNestedCommands proves Describe advertises exactly the twelve nested
+// command capabilities, each declaring CommandParent=="box" so the host keys
+// command:<word>:box (the capability IDENTITY, carried on the wire). Each is class
+// "command" with no InputDef (a command's args are pass-through tokens, not a structured
+// plugin_input). This FAILS on the pre-change code, which declared no command_parent.
 func TestNewMeta_DeclaresNestedCommands(t *testing.T) {
 	caps, err := NewMeta().Describe(context.Background(), &pb.Empty{})
 	if err != nil {
@@ -38,6 +30,9 @@ func TestNewMeta_DeclaresNestedCommands(t *testing.T) {
 		}
 		if c.GetInputDef() != "" {
 			t.Errorf("command:%s must ship no InputDef, got %q", c.GetWord(), c.GetInputDef())
+		}
+		if c.GetCommandParent() != boxCommandParent {
+			t.Errorf("command:%s must declare command_parent %q (its identity), got %q", c.GetWord(), boxCommandParent, c.GetCommandParent())
 		}
 		got[c.GetWord()] = true
 	}
