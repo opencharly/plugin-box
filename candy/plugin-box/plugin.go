@@ -4,7 +4,7 @@
 // compiled_plugins (the canonical placement, P15), or cmd/serve serves them OUT-OF-PROCESS when
 // they are not.
 //
-// It serves TWELVE command capabilities, all NESTED under the `box` parent (CommandParent()=="box",
+// It serves TWELVE command capabilities, all NESTED under the `box` parent (declared identity `command:<word>:box`,
 // so `charly box generate/validate/new/pull/build/inspect/list/labels/load/merge/reconcile/feature`
 // parse + dispatch here while the authoring verbs (candy/plugin-authoring) stay separate — the core
 // BoxCmd holds no verb of its own):
@@ -144,10 +144,7 @@ func NewProvider() pb.ProviderServer { return &provider{} }
 //
 // The PARENT (`box`) is DECLARED as part of each capability's IDENTITY — CommandParent,
 // which travels on the wire (ProvidedCapability.command_parent) so charly keys the provider
-// at `command:<word>:box` identically in the compiled-in and out-of-process placements. The
-// Go `CommandParent()` method below is RETAINED during the expand/contract transition and
-// returns the SAME value, so a charly predating the wire field still nests correctly; the
-// test pins that the two agree.
+// at `command:<word>:box` identically in the compiled-in and out-of-process placements.
 func NewMeta() pb.PluginMetaServer {
 	caps := make([]sdk.ProvidedCapability, 0, len(boxCommandWords))
 	for _, w := range boxCommandWords {
@@ -170,15 +167,6 @@ func CliMain(_ []string) int {
 }
 
 type provider struct{ pb.UnimplementedProviderServer }
-
-// CommandParent is RETAINED during the transition (expand/contract): a charly that predates
-// the wire `command_parent` reads the parent from this method, so keeping it makes this
-// additive change safe against the still-shipping charly while the wire field below carries
-// the SAME declared parent (`box`). charly at the `feat/command-parent-identity` leg reads
-// the DECLARED wire field instead and no longer sniffs this; the method is then removed by
-// the contract leg once charly no longer reads it. Both forms name the one parent —
-// `boxCommandParent` — so they cannot disagree.
-func (provider) CommandParent() string { return boxCommandParent }
 
 // Invoke serves the box commands' Invoke(OpRun) AND the validate capability's structured Invoke(OpValidate):
 //   - OpRun: recover the reverse-channel executor, decode the pass-through args, dispatch by the reserved
