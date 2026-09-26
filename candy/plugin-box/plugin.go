@@ -102,6 +102,12 @@ import (
 // calver is the candy's identity CalVer (advertised over Describe).
 const calver = "2026.198.2131"
 
+// boxCommandParent is the CLI command group every word below NESTS under — part of each
+// capability's declared IDENTITY (command:<word>:box), so charly's provider registry and the
+// generated word→ref index key it distinctly from any top-level same-word command (e.g.
+// candy/plugin-feature's top-level command:feature).
+const boxCommandParent = "box"
+
 // boxCommandWords is the set of command words this plugin serves — all nested under `box`.
 var boxCommandWords = []string{"generate", "validate", "new", "pull", "build", "inspect", "list", "labels", "load", "merge", "reconcile", "feature"}
 
@@ -128,16 +134,22 @@ var boxListSubcommands = []sdk.CLISubcommand{
 // out-of-proc serving.
 func NewProvider() pb.ProviderServer { return &provider{} }
 
-// NewMeta advertises command:generate/validate/new via sdk.NewMeta → BuildCapabilities so the
-// COMPILED-IN path registers each as a command provider (the host builds its dynamic Kong grammar +
-// dispatches Invoke(OpRun)). A command's args are pass-through CLI tokens, not a structured
-// plugin_input, so the capabilities carry no InputDef and the plugin ships no schema. The "list"
-// word ALSO declares its own boxListSubcommands catalog (F-CLI-NEST); every other word declares
-// none, keeping today's flat pass-through grammar unchanged for them.
+// NewMeta advertises command:generate:box/validate:box/… via sdk.NewMeta →
+// BuildCapabilities so the COMPILED-IN path registers each as a command provider (the host
+// builds its dynamic Kong grammar + dispatches Invoke(OpRun)). A command's args are
+// pass-through CLI tokens, not a structured plugin_input, so the capabilities carry no
+// InputDef and the plugin ships no schema. The "list" word ALSO declares its own
+// boxListSubcommands catalog (F-CLI-NEST); every other word declares none, keeping today's
+// flat pass-through grammar unchanged for them.
+//
+// The PARENT (`box`) is DECLARED as part of each capability's IDENTITY — CommandParent,
+// which travels on the wire (ProvidedCapability.command_parent) so charly keys the provider
+// at `command:<word>:box` identically in the compiled-in and out-of-process placements.
+// There is no Go-interface parent sniff any more.
 func NewMeta() pb.PluginMetaServer {
 	caps := make([]sdk.ProvidedCapability, 0, len(boxCommandWords))
 	for _, w := range boxCommandWords {
-		pc := sdk.ProvidedCapability{Class: "command", Word: w}
+		pc := sdk.ProvidedCapability{Class: "command", Word: w, CommandParent: boxCommandParent}
 		if w == "list" {
 			pc.Subcommands = boxListSubcommands
 		}
@@ -156,12 +168,6 @@ func CliMain(_ []string) int {
 }
 
 type provider struct{ pb.UnimplementedProviderServer }
-
-// CommandParent is the optional interface buildUnitInProc detects on a compiled-in command
-// plugin's provider (the SAME srv-interface-detection pattern registerCompiledPlugin uses for
-// spec.DocParser / kit.RefsDownloader): every command word this plugin serves NESTS under the
-// core `box` command group, so `charly box generate/validate/new` parse + dispatch here.
-func (provider) CommandParent() string { return "box" }
 
 // Invoke serves the box commands' Invoke(OpRun) AND the validate capability's structured Invoke(OpValidate):
 //   - OpRun: recover the reverse-channel executor, decode the pass-through args, dispatch by the reserved

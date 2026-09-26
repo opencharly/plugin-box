@@ -29,18 +29,18 @@ plugin-box:
             compiles into charly or serves out-of-process.
         plugin:
             providers:
-                - command:generate
-                - command:validate
-                - command:new
-                - command:pull
-                - command:build
-                - command:inspect
-                - command:list
-                - command:labels
-                - command:load
-                - command:merge
-                - command:reconcile
-                - command:feature
+                - command:generate:box
+                - command:validate:box
+                - command:new:box
+                - command:pull:box
+                - command:build:box
+                - command:inspect:box
+                - command:list:box
+                - command:labels:box
+                - command:load:box
+                - command:merge:box
+                - command:reconcile:box
+                - command:feature:box
             source: github.com/opencharly/plugin-box/candy/plugin-box
         plan:
             - # ADE check: a deterministic build-context check that does NOT depend on the host
