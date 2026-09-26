@@ -15,11 +15,17 @@ import (
 
 // TestNewMeta_DeclaresNestedCommands proves Describe advertises exactly the twelve nested
 // command capabilities, each declaring CommandParent=="box" so the host keys
-// command:<word>:box (the capability IDENTITY, carried on the wire — the Go CommandParent()
-// interface is gone). Each is class "command" with no InputDef (a command's args are
-// pass-through tokens, not a structured plugin_input). This FAILS on the pre-change code,
-// which declared no command_parent and relied on a Go-interface sniff.
+// command:<word>:box (the capability IDENTITY, carried on the wire). Each is class
+// "command" with no InputDef (a command's args are pass-through tokens, not a structured
+// plugin_input). This FAILS on the pre-change code, which declared no command_parent.
+//
+// It also pins the expand/contract AGREEMENT: the retained CommandParent() method (read by
+// a charly predating the wire field) and the wire field name the SAME parent, so the two
+// forms cannot drift while both are present.
 func TestNewMeta_DeclaresNestedCommands(t *testing.T) {
+	if got := (provider{}).CommandParent(); got != boxCommandParent {
+		t.Fatalf("retained CommandParent() = %q, want %q (must agree with the wire field)", got, boxCommandParent)
+	}
 	caps, err := NewMeta().Describe(context.Background(), &pb.Empty{})
 	if err != nil {
 		t.Fatalf("Describe: %v", err)

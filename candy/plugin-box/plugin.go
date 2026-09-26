@@ -169,6 +169,15 @@ func CliMain(_ []string) int {
 
 type provider struct{ pb.UnimplementedProviderServer }
 
+// CommandParent is RETAINED during the transition (expand/contract): a charly that predates
+// the wire `command_parent` reads the parent from this method, so keeping it makes this
+// additive change safe against the still-shipping charly while the wire field below carries
+// the SAME declared parent (`box`). charly at the `feat/command-parent-identity` leg reads
+// the DECLARED wire field instead and no longer sniffs this; the method is then removed by
+// the contract leg once charly no longer reads it. Both forms name the one parent —
+// `boxCommandParent` — so they cannot disagree.
+func (provider) CommandParent() string { return boxCommandParent }
+
 // Invoke serves the box commands' Invoke(OpRun) AND the validate capability's structured Invoke(OpValidate):
 //   - OpRun: recover the reverse-channel executor, decode the pass-through args, dispatch by the reserved
 //     command word. In-proc dispatch runs in charly's own process (native stdio).
