@@ -144,8 +144,10 @@ func NewProvider() pb.ProviderServer { return &provider{} }
 //
 // The PARENT (`box`) is DECLARED as part of each capability's IDENTITY — CommandParent,
 // which travels on the wire (ProvidedCapability.command_parent) so charly keys the provider
-// at `command:<word>:box` identically in the compiled-in and out-of-process placements.
-// There is no Go-interface parent sniff any more.
+// at `command:<word>:box` identically in the compiled-in and out-of-process placements. The
+// Go `CommandParent()` method below is RETAINED during the expand/contract transition and
+// returns the SAME value, so a charly predating the wire field still nests correctly; the
+// test pins that the two agree.
 func NewMeta() pb.PluginMetaServer {
 	caps := make([]sdk.ProvidedCapability, 0, len(boxCommandWords))
 	for _, w := range boxCommandWords {
