@@ -289,7 +289,7 @@ func TestBuildGrammar_Parse_MinimalArgs(t *testing.T) {
 func TestCanonicalLabelKey_ExpandsShorthand(t *testing.T) {
 	cases := map[string]string{
 		"init":                      "ai.opencharly.init",
-		"version":                   "ai.opencharly.version",
+		"box":                       "ai.opencharly.box",
 		"ai.opencharly.description": "ai.opencharly.description",
 		"org.opencontainers.x":      "org.opencontainers.x",
 	}
@@ -302,14 +302,14 @@ func TestCanonicalLabelKey_ExpandsShorthand(t *testing.T) {
 
 func TestSortedLabelKeys_FiltersToContractUnlessAll(t *testing.T) {
 	labels := map[string]string{
-		"ai.opencharly.version": "2026.001.0001",
-		"ai.opencharly.init":    "supervisord",
-		"maintainer":            "someone",
+		"ai.opencharly.box":  "2026.001.0001",
+		"ai.opencharly.init": "supervisord",
+		"maintainer":         "someone",
 	}
-	if got := sortedLabelKeys(labels, false); !reflect.DeepEqual(got, []string{"ai.opencharly.init", "ai.opencharly.version"}) {
+	if got := sortedLabelKeys(labels, false); !reflect.DeepEqual(got, []string{"ai.opencharly.box", "ai.opencharly.init"}) {
 		t.Errorf("contract-only keys = %v", got)
 	}
-	if got := sortedLabelKeys(labels, true); !reflect.DeepEqual(got, []string{"ai.opencharly.init", "ai.opencharly.version", "maintainer"}) {
+	if got := sortedLabelKeys(labels, true); !reflect.DeepEqual(got, []string{"ai.opencharly.box", "ai.opencharly.init", "maintainer"}) {
 		t.Errorf("all keys = %v", got)
 	}
 }

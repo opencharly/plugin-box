@@ -528,13 +528,6 @@ func dispatchNew(args []string) error {
 	return sdk.RunInProcCLI("box new", &g, args)
 }
 
-// nowCalVer computes the current wall-clock CalVer via the existing kit.CalVer type (no duplicate
-// format literal): the candy-identity stamp ScaffoldCandy writes into the new candy's charly.yml.
-func nowCalVer() string {
-	now := time.Now().UTC()
-	return kit.CalVer{Year: now.Year(), Day: now.YearDay(), HHMM: now.Hour()*100 + now.Minute()}.String()
-}
-
 type newCandyGrammar struct {
 	Name string `arg:"" help:"Candy name"`
 }
@@ -544,7 +537,7 @@ func (c *newCandyGrammar) Run() error {
 	if err != nil {
 		return err
 	}
-	if err := kit.ScaffoldCandy(dir, c.Name, nowCalVer()); err != nil {
+	if err := kit.ScaffoldCandy(dir, c.Name); err != nil {
 		return err
 	}
 	fmt.Printf("Created candy at %s\n", filepath.Join(dir, kit.DefaultCandyDir, c.Name))
