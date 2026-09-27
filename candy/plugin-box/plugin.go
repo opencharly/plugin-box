@@ -90,6 +90,7 @@ package box
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -98,6 +99,9 @@ import (
 	pb "github.com/opencharly/spec/proto"
 	"github.com/opencharly/spec/spec"
 )
+
+//go:embed schema/*.cue
+var schemaFS embed.FS
 
 // calver is the candy's identity CalVer (advertised over Describe).
 const calver = "2026.198.2131"
@@ -138,7 +142,9 @@ func NewProvider() pb.ProviderServer { return &provider{} }
 // BuildCapabilities so the COMPILED-IN path registers each as a command provider (the host
 // builds its dynamic Kong grammar + dispatches Invoke(OpRun)). A command's args are
 // pass-through CLI tokens, not a structured plugin_input, so the capabilities carry no
-// InputDef and the plugin ships no schema. The "list" word ALSO declares its own
+// InputDef — but there is NO schema-less plugin: this plugin ships its OWN self-contained
+// CUE schema (schema/box.cue, embedded via schemaFS) documenting its command surface,
+// served over Describe. The "list" word ALSO declares its own
 // boxListSubcommands catalog (F-CLI-NEST); every other word declares none, keeping today's
 // flat pass-through grammar unchanged for them.
 //
@@ -154,7 +160,7 @@ func NewMeta() pb.PluginMetaServer {
 		}
 		caps = append(caps, pc)
 	}
-	return sdk.NewMeta(calver, caps, nil)
+	return sdk.NewMeta(calver, caps, schemaFS)
 }
 
 // CliMain is the OUT-OF-PROCESS command entry — unreachable in the canonical compiled-in placement.
