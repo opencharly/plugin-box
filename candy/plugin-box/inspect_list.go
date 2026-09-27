@@ -211,8 +211,6 @@ func printInspectFormat(view spec.ResolvedBoxView, format string) error {
 		}
 	case "network":
 		fmt.Println(view.Network)
-	case "version":
-		fmt.Println(view.Version)
 	case "status":
 		fmt.Println(resolveStatus(view.Status))
 	case "info":
