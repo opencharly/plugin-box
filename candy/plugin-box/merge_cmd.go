@@ -25,7 +25,7 @@ type mergeGrammar struct {
 	All        bool   `name:"all" help:"Merge all images with merge.auto enabled"`
 	MaxMB      int    `name:"max-mb" help:"Maximum size of a merged layer (MB)"`
 	MaxTotalMB int    `name:"max-total-mb" help:"Maximum total image size for merge (MB, 0=no limit)"`
-	Tag        string `name:"tag" help:"Image CalVer tag (empty = newest local CalVer resolved via the ai.opencharly.version OCI label)"`
+	Tag        string `name:"tag" help:"Image CalVer tag (empty = newest local CalVer tag)"`
 	DryRun     bool   `name:"dry-run" help:"Print merge plan without modifying the image"`
 }
 

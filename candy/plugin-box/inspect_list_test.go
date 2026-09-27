@@ -45,7 +45,6 @@ func captureStdout(t *testing.T, fn func()) string {
 func TestInspectDefaultJSON_SnakeCaseCanonical(t *testing.T) {
 	view := spec.ResolvedBoxView{
 		Name:                "fedora",
-		Version:             "2026.194.0000",
 		EffectiveVersion:    "2026.194.0000",
 		Status:              "working",
 		Base:                "quay.io/fedora/fedora:43",
@@ -75,7 +74,6 @@ func TestInspectDefaultJSON_SnakeCaseCanonical(t *testing.T) {
 	}
 	const want = `{
   "name": "fedora",
-  "version": "2026.194.0000",
   "effective_version": "2026.194.0000",
   "status": "working",
   "base": "quay.io/fedora/fedora:43",
@@ -147,7 +145,7 @@ func TestInspectGrammar_Parse(t *testing.T) {
 // end by the live R10 + the golden default-JSON test above.)
 func TestPrintInspectFormat_Coverage(t *testing.T) {
 	view := spec.ResolvedBoxView{
-		FullTag: "t", Base: "b", Pkg: "p", Registry: "r", Network: "n", Version: "v", Info: "i",
+		FullTag: "t", Base: "b", Pkg: "p", Registry: "r", Network: "n", Info: "i",
 		Builder:             map[string]string{"pixi": "fb"},
 		BuilderCapabilities: []string{"pixi"},
 		BuildFormats:        []string{"rpm"},
@@ -161,7 +159,7 @@ func TestPrintInspectFormat_Coverage(t *testing.T) {
 	}
 	for _, f := range []string{
 		"tag", "base", "builder", "builds", "build", "distro", "pkg", "registry",
-		"platforms", "candy", "network", "version", "status", "info",
+		"platforms", "candy", "network", "status", "info",
 		"ports", "volumes", "aliases", "engine",
 	} {
 		if err := printInspectFormat(view, f); err != nil {

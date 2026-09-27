@@ -260,7 +260,6 @@ func viewToBuildkit(v spec.ResolvedBoxView) *buildkit.ResolvedBox {
 	return &buildkit.ResolvedBox{
 		ResolvedBox: spec.ResolvedBox{
 			Name:                  v.Name,
-			Version:               v.Version,
 			EffectiveVersion:      v.EffectiveVersion,
 			Status:                v.Status,
 			Info:                  v.Info,
