@@ -1,5 +1,7 @@
+version: 2026.232.0520
 plugin-box:
     candy:
+        version: 2026.194.0000
         description: |-
             The build-mode `charly box …` verb HANDLERS relocated into a COMPILED-IN command plugin
             candy (P15, K5). `charly box` is a SHARED command group whose subcommands have different
