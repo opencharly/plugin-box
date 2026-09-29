@@ -1,7 +1,6 @@
 package box
 
 import (
-	"context"
 	"fmt"
 	"os/exec"
 
@@ -41,7 +40,7 @@ type loadGrammar struct {
 }
 
 // dispatchLoad kong-parses the load grammar and runs the verified transfer.
-func dispatchLoad(args []string) error {
+func dispatchLoad(hc *hostClient, args []string) error {
 	var g loadGrammar
 	done, err := parseLeaf("load", &g, args)
 	if done || err != nil {
@@ -58,7 +57,7 @@ func dispatchLoad(args []string) error {
 	// Resolve the running container the same way charly shell / charly cp do, so a name that
 	// works for those works here — and so a stopped target fails with "is not running" rather
 	// than a confusing exec error.
-	engine, name, err := deploykit.ResolveContainer(g.Target, g.Instance)
+	engine, name, err := deploykit.ResolveContainer(hc.ctx, g.Target, g.Instance)
 	if err != nil {
 		return fmt.Errorf("box load: %w", err)
 	}
@@ -85,7 +84,7 @@ func dispatchLoad(args []string) error {
 	// going vacuous without a symptom.
 	// spec/exec/deploy_chain.go already pairs engine→jump this way; this was a wiring
 	// omission, not a design question.
-	ctx := context.Background()
+	ctx := hc.ctx
 	venue := deploykit.ImageVenue{
 		Exec:      &specexec.NestedExecutor{Parent: specexec.ShellExecutor{}, Jump: specexec.NestedJump{Kind: specexec.JumpContainerExec, Engine: engine, Target: name}},
 		PodmanCmd: podman,
