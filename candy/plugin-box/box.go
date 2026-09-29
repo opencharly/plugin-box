@@ -54,7 +54,7 @@ func dispatchBoxCommand(hc *hostClient, word string, args []string) error {
 	case "labels":
 		return dispatchLabels(args)
 	case "load":
-		return dispatchLoad(args)
+		return dispatchLoad(hc, args)
 	case "merge":
 		return dispatchMerge(hc, args)
 	case "reconcile":
