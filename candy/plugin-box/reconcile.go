@@ -9,6 +9,8 @@ import (
 
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
+	"sync"
+
 	"github.com/opencharly/spec/refs"
 	"github.com/opencharly/spec/spec"
 	"gopkg.in/yaml.v3"
@@ -157,12 +159,27 @@ func dispatchReconcile(args []string) error {
 	return nil
 }
 
+// gitClient is the process-wide centralized git layer (spec/refs.GitClient) — the cached
+// newest-tag path (1h TTL, disk-persisted, cross-process). reconcileTargetVersion MUST use
+// THIS, not the raw refs.GitLatestTag (charly#736, R3): the raw per-process `git ls-remote`
+// path reintroduces the 90-94 concurrent ls-remote fanout the cache was built to avoid, and
+// lets `reconcile --remote` disagree with the resolver's cached answer inside one run.
+var (
+	gitClientOnce     sync.Once
+	gitClientInstance *refs.GitClient
+)
+
+func gitClient() *refs.GitClient {
+	gitClientOnce.Do(func() { gitClientInstance = refs.NewGitClient("") })
+	return gitClientInstance
+}
+
 // reconcileTargetVersion picks the version every pin of repo should align to: the newest remote
 // tag when remote is set, else the newest already-referenced version (CalVer/semver via
 // refs.CompareSemver).
 func reconcileTargetVersion(remote bool, repo string, vers map[string]bool) (string, error) {
 	if remote {
-		latest, err := refs.GitLatestTag(refs.RepoGitURL(repo))
+		latest, err := gitClient().LatestTag(refs.RepoGitURL(repo))
 		if err != nil {
 			return "", fmt.Errorf("resolving newest remote tag for %s: %w", repo, err)
 		}
