@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
-	"sync"
 
 	"github.com/opencharly/spec/refs"
 	"github.com/opencharly/spec/spec"
@@ -174,12 +174,19 @@ func gitClient() *refs.GitClient {
 	return gitClientInstance
 }
 
+// latestTagFn is the newest-tag resolver reconcile uses — a package var so tests can prove
+// `reconcile --remote` routes through the CACHED client (gitClient().LatestTag), not the raw
+// refs.GitLatestTag (charly#736). Production value is the cached one.
+var latestTagFn = func(repo string) (string, error) {
+	return gitClient().LatestTag(refs.RepoGitURL(repo))
+}
+
 // reconcileTargetVersion picks the version every pin of repo should align to: the newest remote
 // tag when remote is set, else the newest already-referenced version (CalVer/semver via
 // refs.CompareSemver).
 func reconcileTargetVersion(remote bool, repo string, vers map[string]bool) (string, error) {
 	if remote {
-		latest, err := gitClient().LatestTag(refs.RepoGitURL(repo))
+		latest, err := latestTagFn(repo)
 		if err != nil {
 			return "", fmt.Errorf("resolving newest remote tag for %s: %w", repo, err)
 		}
