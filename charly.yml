@@ -7,7 +7,187 @@
 #
 # Declaring discover: is the whole fix: the candy is scanned, the CUE schema gate
 # applies, and the STOCK `charly box validate` step starts working with no workflow
-# change. This file declares no entities of its own - it only tells charly where to look.
+# change. This file told charly where to look and nothing else until the #24 wave:
+# the capability rule below it needs a witness of its OWN, because the shared
+# `check-commands` bed in opencharly/charly declares no `plugin.providers` entry in
+# any fixture and so never executes that rule (#24). This file now declares TWO
+# entities: `check-box-app`, the bare kind:local TEMPLATE, and `check-box-local`,
+# the disposable witness built `from:` it.
 discover:
     - path: candy
       recursive: true
+
+# ---------------------------------------------------------------------------
+# R10 witness: this plugin's OWN validate engine, driven through the real CLI.
+#
+# The shared `check-commands` bed in opencharly/charly cannot witness this
+# plugin's capability rule: none of its fixtures declares a `plugin.providers`
+# entry, so the rule never executes there (candy/plugin-box#24). The step
+# `box-new-validate-generate` in that bed only proves the engine still ACCEPTS a
+# good project. This bed drives the rule directly, on scratch projects, and
+# asserts the diagnostic each fault gets — so it FAILS when the wording regresses.
+#
+# The steps run host-side against `${CHARLY_BIN}` (the binary under test, which
+# compiles this plugin in). Each step writes its own scratch project under
+# `mktemp -d` and removes it, so the bed leaves nothing behind.
+# ---------------------------------------------------------------------------
+check-box-app:
+  local:
+    description: >-
+      Minimal kind:local TEMPLATE for the check-box member — a BARE `local:` node
+      declaring no candy: the surface under test is this plugin's own validate
+      engine, which charly compiles in, not a layer.
+    candy: []
+
+check-box-local:
+  local:
+    from: check-box-app
+    host: local
+    disposable: true
+    lifecycle: dev
+    description: >-
+      Sole R10 witness of candy/plugin-box's validate engine — a disposable
+      kind:local deploy on host: local. Each step writes a scratch project whose
+      candy declares exactly one `plugin.providers` entry, runs
+      `${CHARLY_BIN} box validate` in it, and asserts the diagnostic that entry
+      gets. `box-capability-unknown-class` FAILS on the pre-fix engine, which
+      answered a well-formed `<class>:<word>` pair whose class the pinned spec
+      does not declare with "is malformed (want <class>:<word>)" — a false
+      statement about a value whose grammar was already correct
+      (candy/plugin-box#24). `box-capability-malformed` and
+      `box-capability-accepted` hold the other two arms so a wording change
+      cannot silently over-correct.
+    plan:
+      - check: >-
+          the binary under test names itself and reports its own version, so the
+          pasted run names the artifact that produced every assertion below
+          (Standard 8)
+        id: box-bed-binary
+        exit_status: 0
+        context:
+          - runtime
+        command:
+          command: 'echo "CHARLY_BIN=${CHARLY_BIN}"; "${CHARLY_BIN}" version'
+          in_container: false
+      - check: >-
+          a well-formed `<class>:<word>` pair whose class the pinned spec does not
+          declare is reported as an UNKNOWN PROVIDER CLASS — naming the class and
+          the set it was checked against — and is never called a grammar error
+          (candy/plugin-box#24)
+        id: box-capability-unknown-class
+        exit_status: 0
+        stdout:
+          - contains: CAPABILITY-UNKNOWN-CLASS-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            mkdir -p "$D/candy/x"
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            PROJ
+            cat > "$D/candy/x/charly.yml" <<'CANDY'
+            x:
+                candy:
+                    description: fixture - a well-formed capability whose class the pinned spec does not declare
+                    plugin:
+                        source: github.com/opencharly/x/candy/x
+                        providers:
+                            - workflow:lobster
+                    plan:
+                        - check: the fixture candy is loadable
+                          id: fixture-ok
+                          context:
+                            - build
+                          command: "true"
+            CANDY
+            OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
+            echo "$OUT" | grep -q 'unknown provider class "workflow"' || { echo 'FAIL: the unknown-class wording is absent'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'known: agent-runtime' || { echo 'FAIL: the known-class set is not enumerated'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'is malformed' && { echo 'FAIL: a well-formed pair is still called "is malformed"'; echo "$OUT"; exit 1; }
+            echo CAPABILITY-UNKNOWN-CLASS-OK
+          in_container: false
+      - check: >-
+          a genuine grammar error (a capability carrying no `<class>:` prefix) keeps
+          the grammar message and does NOT claim an unknown class — the fault the
+          pre-fix wording was correct for stays correct
+        id: box-capability-malformed
+        exit_status: 0
+        stdout:
+          - contains: CAPABILITY-MALFORMED-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            mkdir -p "$D/candy/x"
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            PROJ
+            cat > "$D/candy/x/charly.yml" <<'CANDY'
+            x:
+                candy:
+                    description: fixture - a capability with no `<class>:` prefix at all
+                    plugin:
+                        source: github.com/opencharly/x/candy/x
+                        providers:
+                            - workflow
+                    plan:
+                        - check: the fixture candy is loadable
+                          id: fixture-ok
+                          context:
+                            - build
+                          command: "true"
+            CANDY
+            OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
+            echo "$OUT" | grep -q 'is malformed (want <class>:<word>)' || { echo 'FAIL: the grammar wording is absent'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'unknown provider class' && { echo 'FAIL: a real grammar error now claims an unknown class'; echo "$OUT"; exit 1; }
+            echo CAPABILITY-MALFORMED-OK
+          in_container: false
+      - check: >-
+          a capability whose class the pinned spec DOES declare still validates clean
+          with exit 0, so the fix rejects nothing it used to accept
+        id: box-capability-accepted
+        exit_status: 0
+        stdout:
+          - contains: CAPABILITY-ACCEPTED-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            mkdir -p "$D/candy/x"
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            PROJ
+            cat > "$D/candy/x/charly.yml" <<'CANDY'
+            x:
+                candy:
+                    description: fixture - a capability whose class the pinned spec declares
+                    plugin:
+                        source: github.com/opencharly/x/candy/x
+                        providers:
+                            - verb:x
+                    plan:
+                        - check: the fixture candy is loadable
+                          id: fixture-ok
+                          context:
+                            - build
+                          command: "true"
+            CANDY
+            OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1) || { echo 'FAIL: a declared class no longer validates'; echo "$OUT"; exit 1; }
+            echo CAPABILITY-ACCEPTED-OK
+          in_container: false

@@ -118,9 +118,17 @@ func validateCandyContents(vc *vctx, e *vErr) {
 				e.Add("candy %q: plugin block declares no providers", name)
 			}
 			for _, capStr := range v.PluginProviders {
-				class, word, ok := splitPluginCapability(capStr)
-				if !ok {
+				class, word, fault := splitPluginCapability(capStr)
+				switch fault {
+				case capFaultMalformed:
 					e.Add("candy %q: plugin capability %q is malformed (want <class>:<word>)", name, capStr)
+					continue
+				case capFaultUnknownClass:
+					// NOT a grammar error: `capStr` IS a well-formed <class>:<word> pair. The
+					// class is simply not in the pinned spec's vocabulary, so the actionable
+					// fact is the CLASS and the set it was checked against — reporting
+					// "malformed" here sends the reader to fix a word that is already correct.
+					e.Add("candy %q: plugin capability %q: unknown provider class %q (known: %s)", name, capStr, class, knownProviderClasses)
 					continue
 				}
 				if source == "builtin" && vc.env != nil && !slices.Contains(vc.env.ProviderCapabilities, class+":"+word) {
@@ -165,18 +173,45 @@ var validPluginClasses = func() map[string]bool {
 	return m
 }()
 
+// knownProviderClasses renders spec.ProviderClasses as the sorted, comma-separated list the
+// unknown-class diagnostic enumerates — computed ONCE. Sorted so the message is stable across
+// spec bumps instead of reordering with the CUE declaration order (the raw list is NOT sorted).
+var knownProviderClasses = func() string {
+	cs := slices.Clone(spec.ProviderClasses)
+	slices.Sort(cs)
+	return strings.Join(cs, ", ")
+}()
+
+// pluginCapabilityFault classifies WHY splitPluginCapability rejected a capability. The two
+// rejections are different faults with different remedies and MUST NOT share one message:
+//
+//   - capFaultMalformed  — a grammar error in the string itself (no colon, or an empty half).
+//     The fix is to write a <class>:<word> pair.
+//   - capFaultUnknownClass — the string IS a well-formed <class>:<word> pair naming a class the
+//     pinned `spec` does not declare (the class set derives from spec.ProviderClasses). This is
+//     a contract/version mismatch, not a grammar error, so reporting it as "malformed" points
+//     the reader at a word that is already correct and hides the actual cause.
+type pluginCapabilityFault int
+
+const (
+	capFaultNone pluginCapabilityFault = iota
+	capFaultMalformed
+	capFaultUnknownClass
+)
+
 // splitPluginCapability splits a `<class>:<word>` capability, mirroring core splitCapability
 // (provider.go): the class must be non-empty, the word non-empty, and the class a known one.
-func splitPluginCapability(s string) (class, word string, ok bool) {
+// The three outcomes are distinct so the caller can word each fault truthfully.
+func splitPluginCapability(s string) (class, word string, fault pluginCapabilityFault) {
 	i := strings.IndexByte(s, ':')
 	if i <= 0 || i == len(s)-1 {
-		return "", "", false
+		return "", "", capFaultMalformed
 	}
 	c := s[:i]
 	if !validPluginClasses[c] {
-		return "", "", false
+		return c, s[i+1:], capFaultUnknownClass
 	}
-	return c, s[i+1:], true
+	return c, s[i+1:], capFaultNone
 }
 
 // validateCandyApk enforces the apk: cross-field rule CUE cannot express (source: applies only to
