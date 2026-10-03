@@ -10,8 +10,9 @@
 # change. This file told charly where to look and nothing else until the #24 wave:
 # the capability rule below it needs a witness of its OWN, because the shared
 # `check-commands` bed in opencharly/charly declares no `plugin.providers` entry in
-# any fixture and so never executes that rule (#24). `check-box-local` is that
-# witness; it is the only entity this file declares.
+# any fixture and so never executes that rule (#24). This file now declares TWO
+# entities: `check-box-app`, the bare kind:local TEMPLATE, and `check-box-local`,
+# the disposable witness built `from:` it.
 discover:
     - path: candy
       recursive: true

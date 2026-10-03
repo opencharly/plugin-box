@@ -35,8 +35,12 @@ Canonical files:
 - The merge gate is the **org-wide** `charly/pr-validator` (required check
   `validate / validate`, defined in `opencharly/.github`); this repo has **no**
   per-repo candy gate.
-- The live R10 witness is the check-commands bed in `opencharly/charly` (the
-  full `charly box generate/validate/new` end-to-end).
+- The live R10 witness is `check-box-local` in this repo's root `charly.yml` — a
+  disposable `kind:local` deploy on `host: local` (template `check-box-app`) whose
+  steps run `${CHARLY_BIN} box validate` on scratch projects and assert the
+  diagnostic each fault gets. charly's shared `check-commands` bed declares no
+  `plugin.providers` entry in any fixture, so it never executes the capability
+  rule and cannot witness it.
 
 ## Modify this repo
 
