@@ -5,6 +5,7 @@ import (
 	"os/exec"
 
 	"github.com/opencharly/sdk/deploykit"
+	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/spec/container"
 	specexec "github.com/opencharly/spec/exec"
 )
@@ -30,13 +31,14 @@ import (
 // The load lands through `podman exec -i` rather than from the host directly because the target
 // socket lives in the container's own mount namespace — there is no host path to it.
 
-// loadGrammar is the `charly box load <target> <image> [--as] [--socket] [--instance]` CLI surface.
+// loadGrammar is the `charly box load <target> <image> [--as] [--socket] [--instance] [--kind]` CLI surface.
 type loadGrammar struct {
 	Target   string `arg:"" help:"Running deploy (or box) whose venue receives the image — the same name charly shell/cp accept."`
 	Image    string `arg:"" help:"Image ref present in HOST podman storage (build it first with charly box build)."`
 	As       string `name:"as" help:"After load, tag the image in the venue under this stable ref (e.g. localhost/charly-agentteams-worker:latest)."`
 	Socket   string `name:"socket" default:"/run/user/1000/podman/podman.sock" help:"In-venue podman API socket the nested store is served on. The default is the uid-1000 rootless path the container-nesting composition serves."`
 	Instance string `name:"instance" help:"Deploy instance suffix, when the target runs more than one."`
+	Kind     string `name:"kind" help:"Deliver into a KUBERNETES/KIND cluster's node containerd instead of a pod's nested podman store. Give the kind cluster name (its node is <name>-control-plane); the image then runs in the cluster with NO registry pull."`
 }
 
 // dispatchLoad kong-parses the load grammar and runs the verified transfer.
@@ -52,6 +54,14 @@ func dispatchLoad(hc *hostClient, args []string) error {
 	ref, err := container.ResolveDeliverableRef("podman", g.Image)
 	if err != nil {
 		return fmt.Errorf("box load: %w", err)
+	}
+
+	// A kind/node venue is a DIFFERENT store from a pod's nested podman: the target is a
+	// cluster's containerd, not a container's podman. Same verified transfer
+	// (deploykit.TransferImageToVenue), same `save | load` streaming — only the constructor
+	// differs, which is the seam the `charly box load` cutover was built to allow (R3).
+	if g.Kind != "" {
+		return loadIntoKindNode(hc, g, ref)
 	}
 
 	// Resolve the running container the same way charly shell / charly cp do, so a name that
@@ -106,6 +116,68 @@ func dispatchLoad(hc *hostClient, args []string) error {
 		// tried and leaves the diagnosis to the reader.
 		return fmt.Errorf("%w\n\nif the venue serves no podman API socket at %s, compose the "+
 			"nested-podman-socket candy into its box or pass --socket", err, g.Socket)
+	}
+	return nil
+}
+
+// kindControlPlaneNode is the node container `kind` creates for a cluster — the venue
+// `charly box load --kind <cluster>` delivers into. kind's default topology is one
+// control-plane node, and it names it `<cluster>-control-plane` (the same name
+// plugin-kube's kindNodeHasImage probes).
+func kindControlPlaneNode(cluster string) string { return cluster + "-control-plane" }
+
+// kindCtrImportArgv is the argv, run on the OPERATOR's engine, that reads a `podman save`
+// archive on stdin and imports it into the node's containerd. `-n k8s.io` is the namespace
+// kubelet reads, so the imported image is visible to the cluster; `import -` reads stdin,
+// so no archive ever lands on the node's disk. Pure so it is unit-pinned.
+func kindCtrImportArgv(node string) []string {
+	return []string{"exec", "-i", node, "ctr", "-n", "k8s.io", "images", "import", "-"}
+}
+
+// loadIntoKindNode delivers a host image into a KUBERNETES (kind) cluster's NODE containerd,
+// so the cluster runs it with NO registry pull. It is the second binding of the one
+// venue-generic path: `deploykit.TransferImageToVenue` does the verified `save | load`, and
+// `deploykit.NewNodeVenue` supplies the store-kind seam that speaks `ctr -n k8s.io`.
+//
+// A kind node is a container on the operator's engine, named `<cluster>-control-plane`, so
+// the venue is reached the SAME way the pod venue is — a NestedExecutor over the engine's
+// `exec` — but the probe/tag/load verbs are ctr, not podman. The load side streams the host
+// archive straight into `ctr -n k8s.io images import -` (no temp file on the node: an import
+// reads stdin).
+//
+// This is the mechanism `opencharly/charly#809` charters: cache an image once, deliver it
+// into a pod or a k8s node locally instead of every run re-pulling quay.io/registry.k8s.io.
+func loadIntoKindNode(hc *hostClient, g loadGrammar, ref string) error {
+	rt, err := kit.ResolveRuntime()
+	if err != nil {
+		return fmt.Errorf("box load --kind: %w", err)
+	}
+	engine := kit.EngineBinary(rt.RunEngine)
+	node := kindControlPlaneNode(g.Kind)
+	if !kit.ContainerRunning(engine, node) {
+		return fmt.Errorf("box load --kind: kind cluster %q has no running node container %q on engine %q — "+
+			"create it with `kind create cluster --name %s` (or a target:kindcluster deploy) first",
+			g.Kind, node, engine, g.Kind)
+	}
+
+	ctx := hc.ctx
+	// The in-node store verb. `-n k8s.io` is the namespace kubelet reads, so an image imported
+	// here is visible to the cluster. Reused verbatim by the probe (HasImage), the tag, the
+	// removal and the load — the ONE place the store scope is decided.
+	ctr := "ctr -n k8s.io"
+	venue := deploykit.NewNodeVenue(
+		&specexec.NestedExecutor{Parent: specexec.ShellExecutor{}, Jump: specexec.NestedJump{Kind: specexec.JumpContainerExec, Engine: engine, Target: node}},
+		ctr,
+		func() *exec.Cmd {
+			// The archive is piped through the engine exec into `ctr images import -` — no
+			// intermediate tar on the node.
+			return exec.CommandContext(ctx, engine, kindCtrImportArgv(node)...)
+		},
+		"box load --kind",
+	)
+	if err := deploykit.TransferImageToVenue(ctx, venue, "podman", ref, g.As, deploykit.EmitOpts{}); err != nil {
+		return fmt.Errorf("%w\n\nif the kind node %q serves no containerd, the cluster is not up "+
+			"(kind creates the node on engine %q); check `%s ps`", err, node, engine, engine)
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package box
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -42,9 +43,25 @@ func TestPluginCapabilityFaultsAreDistinct(t *testing.T) {
 		}
 	}
 	// The whole point: an unknown class with a perfectly good word is NOT malformed.
-	if _, word, fault := splitPluginCapability("workflow:lobster"); fault != capFaultUnknownClass || word != "lobster" {
+	// The class token must be one spec.ProviderClasses does NOT contain — this fixture hard-coded
+	// "workflow" until spec v0.2026276.0 added `workflow` to the closed vocabulary and the test
+	// became stale. Derive a genuinely-unknown token so the fixture cannot rot again.
+	unknown := unknownProviderClass()
+	if _, word, fault := splitPluginCapability(unknown + ":lobster"); fault != capFaultUnknownClass || word != "lobster" {
 		t.Errorf("splitPluginCapability(%q) = fault %v word %q, want capFaultUnknownClass / \"lobster\"",
-			"workflow:lobster", fault, word)
+			unknown+":lobster", fault, word)
+	}
+}
+
+// unknownProviderClass returns a class token that spec.ProviderClasses does NOT contain, so a
+// test can assert the unknown-class path without hard-coding a name a future vocabulary bump may
+// add (the R1 that this file's "workflow" fixture hit in spec v0.2026276.0).
+func unknownProviderClass() string {
+	for i := 0; ; i++ {
+		c := fmt.Sprintf("not-a-class-%d", i)
+		if !slices.Contains(spec.ProviderClasses, c) {
+			return c
+		}
 	}
 }
 
@@ -93,8 +110,8 @@ func pluginCandyFaults(providers ...string) string {
 // must NOT claim an unknown class. Without the fix both faults collapse into one false
 // "is malformed" line, which is exactly what this test fails on.
 func TestPluginCapabilityDiagnosticWording(t *testing.T) {
-	got := pluginCandyFaults("workflow:lobster")
-	if !strings.Contains(got, `unknown provider class "workflow"`) {
+	got := pluginCandyFaults(unknownProviderClass() + ":lobster")
+	if !strings.Contains(got, `unknown provider class "not-a-class-0"`) {
 		t.Errorf("an unknown class must be reported as such; got: %s", got)
 	}
 	if !strings.Contains(got, "known: ") || !strings.Contains(got, "agent-runtime") {
