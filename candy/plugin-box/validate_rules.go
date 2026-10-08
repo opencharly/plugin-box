@@ -109,6 +109,19 @@ func validateCandyContents(vc *vctx, e *vErr) {
 		// declared providers + source) rides spec.CandyView.PluginProviders/PluginSource; the TARGET (the
 		// compiled-in provider set) rides ResolvedProject.ProviderCapabilities — so the check runs off the
 		// envelope with no host-registry dial. Mirrors core splitCapability + validatePluginCandy exactly.
+		//
+		// TWO INDEPENDENT GATES, AND WHY THAT MATTERS TO A BED AUTHOR (plugin-box#28). The
+		// provider-class vocabulary is CLOSED in CUE — spec/schema/candy.cue's #ProviderClassNames,
+		// whose regex #PluginCapability computes from that same list — so an authored manifest
+		// naming an unknown class is ALSO rejected by the schema gate. Both gates report: measured
+		// 2026-10-08, `providers: ["zzznotaclass:lobster"]` yields the CUE "out of bound" error AND
+		// this rule's own `unknown provider class "zzznotaclass" (known: …)` — because the validate
+		// engine runs over an error-TOLERANT envelope, so a schema fault does not suppress the rule.
+		//
+		// So all three arms below are author-reachable. The trap is the opposite one: a fixture
+		// naming a class that IS in the vocabulary (e.g. `workflow:lobster`) produces NO diagnostic
+		// at all — there is no violation to report — so a step asserting an unknown-class message
+		// for such a fixture passes on nothing. Pick a class the closed list omits.
 		if v.IsPlugin {
 			source := v.PluginSource
 			if source == "" {
@@ -121,6 +134,7 @@ func validateCandyContents(vc *vctx, e *vErr) {
 				class, word, fault := splitPluginCapability(capStr)
 				switch fault {
 				case capFaultMalformed:
+					// Also rejected by the CUE gate, and reported here too (same reason).
 					e.Add("candy %q: plugin capability %q is malformed (want <class>:<word>)", name, capStr)
 					continue
 				case capFaultUnknownClass:
@@ -128,6 +142,8 @@ func validateCandyContents(vc *vctx, e *vErr) {
 					// class is simply not in the pinned spec's vocabulary, so the actionable
 					// fact is the CLASS and the set it was checked against — reporting
 					// "malformed" here sends the reader to fix a word that is already correct.
+					// Also rejected by the CUE gate, but reported here too — see the block
+					// comment above: the engine validates an error-tolerant envelope.
 					e.Add("candy %q: plugin capability %q: unknown provider class %q (known: %s)", name, capStr, class, knownProviderClasses)
 					continue
 				}

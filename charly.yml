@@ -70,10 +70,57 @@ check-box-local:
           command: 'echo "CHARLY_BIN=${CHARLY_BIN}"; "${CHARLY_BIN}" version'
           in_container: false
       - check: >-
-          a well-formed `<class>:<word>` pair whose class the pinned spec does not
-          declare is reported as an UNKNOWN PROVIDER CLASS — naming the class and
-          the set it was checked against — and is never called a grammar error
-          (candy/plugin-box#24)
+          a candy that declares a `plugin:` block with NO capability is reported as
+          `plugin block declares no providers` — a GENUINELY violated capability, so
+          this step goes red if that rule stops firing (candy/plugin-box#28). One of
+          the two reachable capability violations an authored manifest can express
+          (the other is an unknown provider class, witnessed by the step below).
+        id: box-capability-no-providers
+        exit_status: 0
+        stdout:
+          - contains: CAPABILITY-NO-PROVIDERS-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            mkdir -p "$D/candy/x"
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            PROJ
+            cat > "$D/candy/x/charly.yml" <<'CANDY'
+            x:
+                candy:
+                    description: fixture - a plugin block that genuinely violates the capability rule
+                    plugin:
+                        source: github.com/opencharly/x/candy/x
+                        providers: []
+                    plan:
+                        - check: the fixture candy is loadable
+                          id: fixture-ok
+                          context:
+                            - build
+                          command: "true"
+            CANDY
+            OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
+            echo "$OUT" | grep -q 'plugin block declares no providers' || { echo 'FAIL: a plugin block with no capability was not reported'; echo "$OUT"; exit 1; }
+            echo CAPABILITY-NO-PROVIDERS-OK
+          in_container: false
+      - check: >-
+          a well-formed `<class>:<word>` pair whose class the closed vocabulary does not
+          declare is reported as an UNKNOWN PROVIDER CLASS — naming the class and the set
+          it was checked against — and is never called a grammar error (candy/plugin-box#24,
+          #28). The fixture must name a class `#ProviderClassNames` OMITS: the former
+          fixture used `workflow:lobster`, and `workflow` IS in that closed list, so the
+          manifest declared a perfectly legal capability, the rule correctly reported
+          nothing, and the step passed on a rule that had nothing to say. `zzznotaclass`
+          is genuinely absent, and both gates report it (the CUE pattern AND this rule,
+          since the engine validates an error-tolerant envelope) — so this step goes red
+          if the rule's own wording is lost.
         id: box-capability-unknown-class
         exit_status: 0
         stdout:
@@ -94,11 +141,11 @@ check-box-local:
             cat > "$D/candy/x/charly.yml" <<'CANDY'
             x:
                 candy:
-                    description: fixture - a well-formed capability whose class the pinned spec does not declare
+                    description: fixture - a well-formed capability whose class the closed vocabulary omits
                     plugin:
                         source: github.com/opencharly/x/candy/x
                         providers:
-                            - workflow:lobster
+                            - zzznotaclass:lobster
                     plan:
                         - check: the fixture candy is loadable
                           id: fixture-ok
@@ -107,8 +154,9 @@ check-box-local:
                           command: "true"
             CANDY
             OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
-            echo "$OUT" | grep -q 'unknown provider class "workflow"' || { echo 'FAIL: the unknown-class wording is absent'; echo "$OUT"; exit 1; }
-            echo "$OUT" | grep -q 'known: agent-runtime' || { echo 'FAIL: the known-class set is not enumerated'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'unknown provider class "zzznotaclass"' || { echo 'FAIL: the unknown-class wording is absent'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'known: ' || { echo 'FAIL: the known-class set is not enumerated'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'workflow' || { echo 'FAIL: the enumerated set no longer includes workflow'; echo "$OUT"; exit 1; }
             echo "$OUT" | grep -q 'is malformed' && { echo 'FAIL: a well-formed pair is still called "is malformed"'; echo "$OUT"; exit 1; }
             echo CAPABILITY-UNKNOWN-CLASS-OK
           in_container: false
@@ -190,4 +238,45 @@ check-box-local:
             CANDY
             OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1) || { echo 'FAIL: a declared class no longer validates'; echo "$OUT"; exit 1; }
             echo CAPABILITY-ACCEPTED-OK
+          in_container: false
+      - check: >-
+          `charly box reconcile --closure` walks the project's WHOLE closure and REPORTS what it
+          cannot repair (opencharly/charly#737). This step exercises the reporting leg on a ref the
+          walk cannot fetch: an unfetchable ref's version is the one folded into the target from the
+          same pin, so a skew comparison can never fire for it — the tool must say the closure is
+          only PARTLY known and NAME the ref. FAILS if an unfetchable ref is swallowed (the pre-fix
+          behaviour), because a half-known closure would then read as a fully-reconciled one.
+        id: box-reconcile-closure-reports-unfetchable
+        exit_status: 0
+        stdout:
+          - contains: BOX-CLOSURE-UNFETCHABLE-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            mkdir -p "$D/candy/x"
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            PROJ
+            cat > "$D/candy/x/charly.yml" <<'CANDY'
+            x:
+                candy:
+                    require:
+                        - '@github.com/opencharly/this-repo-does-not-exist-zzz/candy/nope:v1.2.3'
+                    plan:
+                        - check: fixture
+                          id: fixture-ok
+                          context:
+                              - build
+                          command: "true"
+            CANDY
+            OUT=$("${CHARLY_BIN}" -C "$D" box reconcile --closure --dry-run 2>&1 || true)
+            echo "$OUT" | grep -q 'could NOT be fetched' || { echo 'FAIL: the closure report does not say the closure is only partly known'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'this-repo-does-not-exist-zzz@v1.2.3' || { echo 'FAIL: the report does not NAME the unfetchable ref'; echo "$OUT"; exit 1; }
+            echo BOX-CLOSURE-UNFETCHABLE-OK
           in_container: false
