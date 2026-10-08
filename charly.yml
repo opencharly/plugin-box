@@ -72,18 +72,9 @@ check-box-local:
       - check: >-
           a candy that declares a `plugin:` block with NO capability is reported as
           `plugin block declares no providers` — a GENUINELY violated capability, so
-          this step goes red if that rule stops firing (candy/plugin-box#28).
-          WHY NOT THE UNKNOWN-CLASS ARM: the provider-class vocabulary is CLOSED in
-          CUE (`#ProviderClassNames` in spec/schema/candy.cue, which includes
-          `workflow`), and `#PluginCapability`'s regex derives from it — so an author
-          cannot write an unknown class at all: the schema gate rejects it (`field not
-          allowed` / pattern mismatch) BEFORE the rule sees it. Measured 2026-10-08:
-          `zzznotaclass:lobster` -> CUE schema error, no rule diagnostic;
-          `workflow:lobster` -> clean, because `workflow` IS a declared class. The
-          former fixture therefore asserted a message its own shape can never produce
-          and passed on dead code. The unknown-class arm is reachable only for an
-          envelope built WITHOUT the CUE gate; the empty-providers arm below is the
-          one an authored manifest can genuinely violate.
+          this step goes red if that rule stops firing (candy/plugin-box#28). One of
+          the two reachable capability violations an authored manifest can express
+          (the other is an unknown provider class, witnessed by the step below).
         id: box-capability-no-providers
         exit_status: 0
         stdout:
@@ -118,6 +109,56 @@ check-box-local:
             OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
             echo "$OUT" | grep -q 'plugin block declares no providers' || { echo 'FAIL: a plugin block with no capability was not reported'; echo "$OUT"; exit 1; }
             echo CAPABILITY-NO-PROVIDERS-OK
+          in_container: false
+      - check: >-
+          a well-formed `<class>:<word>` pair whose class the closed vocabulary does not
+          declare is reported as an UNKNOWN PROVIDER CLASS — naming the class and the set
+          it was checked against — and is never called a grammar error (candy/plugin-box#24,
+          #28). The fixture must name a class `#ProviderClassNames` OMITS: the former
+          fixture used `workflow:lobster`, and `workflow` IS in that closed list, so the
+          manifest declared a perfectly legal capability, the rule correctly reported
+          nothing, and the step passed on a rule that had nothing to say. `zzznotaclass`
+          is genuinely absent, and both gates report it (the CUE pattern AND this rule,
+          since the engine validates an error-tolerant envelope) — so this step goes red
+          if the rule's own wording is lost.
+        id: box-capability-unknown-class
+        exit_status: 0
+        stdout:
+          - contains: CAPABILITY-UNKNOWN-CLASS-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            mkdir -p "$D/candy/x"
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            PROJ
+            cat > "$D/candy/x/charly.yml" <<'CANDY'
+            x:
+                candy:
+                    description: fixture - a well-formed capability whose class the closed vocabulary omits
+                    plugin:
+                        source: github.com/opencharly/x/candy/x
+                        providers:
+                            - zzznotaclass:lobster
+                    plan:
+                        - check: the fixture candy is loadable
+                          id: fixture-ok
+                          context:
+                            - build
+                          command: "true"
+            CANDY
+            OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
+            echo "$OUT" | grep -q 'unknown provider class "zzznotaclass"' || { echo 'FAIL: the unknown-class wording is absent'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'known: ' || { echo 'FAIL: the known-class set is not enumerated'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'workflow' || { echo 'FAIL: the enumerated set no longer includes workflow'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'is malformed' && { echo 'FAIL: a well-formed pair is still called "is malformed"'; echo "$OUT"; exit 1; }
+            echo CAPABILITY-UNKNOWN-CLASS-OK
           in_container: false
       - check: >-
           a genuine grammar error (a capability carrying no `<class>:` prefix) keeps
