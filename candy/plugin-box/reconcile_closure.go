@@ -190,7 +190,6 @@ func closureManifests(dir string) []string {
 type refPin struct {
 	repo    string
 	version string
-	raw     string
 }
 
 // filePins returns every pinned remote candy ref in one manifest (an unpinned ref names no export,
@@ -213,7 +212,7 @@ func filePins(path string) ([]refPin, error) {
 		if p.Version == "" {
 			return
 		}
-		out = append(out, refPin{repo: p.RepoPath, version: p.Version, raw: s.Value})
+		out = append(out, refPin{repo: p.RepoPath, version: p.Version})
 	})
 	return out, nil
 }
