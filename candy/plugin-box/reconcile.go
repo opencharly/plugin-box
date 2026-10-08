@@ -78,19 +78,18 @@ func dispatchReconcile(args []string) error {
 		}
 		roots[f] = &root
 		sources[f] = data
-		walkScalars(&root, func(s *yaml.Node) {
-			if !deploykit.IsRemoteCandyRef(s.Value) {
-				return
+		// ONE manifest-pin reader (filePins, shared with the closure walk): this pass and the
+		// closure scan must never disagree about what a manifest references (R3).
+		pins, perr := filePins(f)
+		if perr != nil {
+			return perr
+		}
+		for _, p := range pins {
+			if refVersions[p.repo] == nil {
+				refVersions[p.repo] = make(map[string]bool)
 			}
-			p := spec.ParseRemoteRef(s.Value)
-			if p.Version == "" {
-				return // unpinned ref — nothing to align
-			}
-			if refVersions[p.RepoPath] == nil {
-				refVersions[p.RepoPath] = make(map[string]bool)
-			}
-			refVersions[p.RepoPath][p.Version] = true
-		})
+			refVersions[p.repo][p.version] = true
+		}
 	}
 	if len(refVersions) == 0 {
 		fmt.Println("no @github pins found — nothing to reconcile")
@@ -103,7 +102,7 @@ func dispatchReconcile(args []string) error {
 	// requires instead of reading "already reconciled" while the tree is skewed.
 	var foreign []foreignPin
 	if g.Closure {
-		closureVersions, fp, cerr := closureScan(files)
+		closureVersions, fp, cerr := closureScan(refVersions)
 		if cerr != nil {
 			return cerr
 		}
@@ -166,32 +165,17 @@ func dispatchReconcile(args []string) error {
 			fmt.Printf("%s -> %s (was at %d versions)\n", r, target[r], len(refVersions[r]))
 		}
 	}
-	// REPORT what this project cannot repair (closure mode only): a pin that lives in another
-	// repo of the closure is that repo's to advance, so the honest output names it rather than
-	// letting this project's own "already reconciled" stand for the whole tree.
-	if len(foreign) > 0 {
-		skewed := 0
-		for _, f := range foreign {
-			if want := target[f.repo]; want != "" && f.version != want {
-				skewed++
-			}
-		}
-		if skewed > 0 {
-			fmt.Printf("%d pin(s) in OTHER repos of this project's closure disagree with the closure-wide target — this project cannot rewrite them, the owning repo must:\n", skewed)
-			for _, f := range foreign {
-				if want := target[f.repo]; want != "" && f.version != want {
-					fmt.Printf("  %s (%s): %s -> %s\n", f.repo, f.file, f.version, want)
-				}
-			}
-		}
-	}
+	// REPORT what this project cannot repair (closure mode only): a pin that lives in another repo
+	// of the closure is that repo's to advance, and a ref the walk could not fetch at all leaves
+	// the closure only PARTLY known — both are named, so this project's own "already reconciled"
+	// can never stand for the whole tree.
+	_, unfetched := reportClosure(os.Stdout, foreign, target)
 
 	if len(rewrites) == 0 {
-		if len(foreign) == 0 {
-			fmt.Println("already reconciled — every repo's pins are at one version")
-			return nil
-		}
 		fmt.Println("already reconciled — this project's own pins are at one version")
+		if unfetched > 0 {
+			fmt.Printf("…but the closure is only PARTLY known: %d ref(s) could not be fetched (above)\n", unfetched)
+		}
 		return nil
 	}
 	if g.DryRun {

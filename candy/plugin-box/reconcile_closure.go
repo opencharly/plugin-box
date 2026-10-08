@@ -26,6 +26,7 @@ package box
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -41,26 +42,67 @@ import (
 // exports without touching the network (the same seam shape as latestTagFn).
 var closureFetchFn = refs.DownloadRepo
 
+// reportClosure writes the closure report — the skew this project cannot repair, and the refs the
+// walk could not fetch at all — and returns the two counts.
+//
+// Extracted from dispatchReconcile so a test can assert the USER-VISIBLE output rather than an
+// internal return value: the defect this closes was exactly that the unfetchable refs were returned
+// by the walk and then filtered out of everything the user sees.
+func reportClosure(w io.Writer, foreign []foreignPin, target map[string]string) (skewed, unfetched int) {
+	for _, f := range foreign {
+		if f.unfetched {
+			unfetched++
+		} else if want := target[f.repo]; want != "" && f.version != want {
+			skewed++
+		}
+	}
+	if unfetched > 0 {
+		fmt.Fprintf(w, "%d ref(s) in this project's closure could NOT be fetched — the closure is only PARTLY known:\n", unfetched)
+		for _, f := range foreign {
+			if f.unfetched {
+				fmt.Fprintf(w, "  %s: unfetchable (no export cached, and the fetch failed)\n", f.source)
+			}
+		}
+	}
+	if skewed > 0 {
+		fmt.Fprintf(w, "%d pin(s) in OTHER repos of this project's closure disagree with the closure-wide target — this project cannot rewrite them, the owning repo must:\n", skewed)
+		for _, f := range foreign {
+			if !f.unfetched {
+				if want := target[f.repo]; want != "" && f.version != want {
+					fmt.Fprintf(w, "  %s (%s): %s -> %s\n", f.repo, f.file, f.version, want)
+				}
+			}
+		}
+	}
+	return skewed, unfetched
+}
+
 // foreignPin is one pin found OUTSIDE the project (in a fetched closure repo's own manifest),
 // with the repo@version it names. The project cannot rewrite it — it belongs to another repo —
 // so it is REPORTED.
 type foreignPin struct {
 	source  string // the fetched repo the manifest came from, "repo@version"
-	file    string // the manifest path within that export
-	ref     string // the ref as authored
+	file    string // the manifest path within that export, or "<unfetchable>"
 	repo    string
 	version string
+	// unfetched records that the walk could not look at this ref AT ALL. It is reported as its
+	// own category: an unfetchable ref's version is the one folded into the target from the same
+	// pin, so a skew comparison against it can never fire — reporting it by skew alone would let a
+	// half-known closure read as a reconciled one, which is the failure this leg exists to stop.
+	unfetched bool
 }
 
-// closureScan walks the project's WHOLE closure read-only: the project's own manifests (already
-// collected as `local`) plus every pinned @github repo's own manifests, transitively. It returns
-// the closure-wide version set per repo (the input the alignment target must be computed over)
-// and every FOREIGN pin it saw, which the caller reports rather than rewrites.
+// closureScan walks the project's WHOLE closure read-only, starting from the version set the
+// caller ALREADY collected from the project's own manifests (`seed` — the same `filePins`
+// extraction, so the manifest-pin reading exists once, R3) and descending into every pinned
+// @github repo's own manifests, transitively. It returns the closure-wide version set per repo
+// (the input the alignment target must be computed over) and every FOREIGN pin it saw, which the
+// caller reports rather than rewrites.
 //
-// A ref that cannot be fetched is REPORTED as an unresolved foreign pin, never silently skipped:
-// "I could not look at this part of the closure" is a fact the reader needs, and hiding it is the
-// same class of defect as the silent ref drop this cluster also fixes.
-func closureScan(local []string) (map[string]map[string]bool, []foreignPin, error) {
+// A ref that cannot be fetched is returned with unfetched=true, never silently skipped: "I could
+// not look at this part of the closure" is a fact the reader needs, and hiding it is the same class
+// of defect as the silent ref drop this cluster also fixes.
+func closureScan(seed map[string]map[string]bool) (map[string]map[string]bool, []foreignPin, error) {
 	versions := map[string]map[string]bool{}
 	var foreign []foreignPin
 
@@ -71,17 +113,12 @@ func closureScan(local []string) (map[string]map[string]bool, []foreignPin, erro
 		versions[repo][version] = true
 	}
 
-	// Pass 1: the project's own files — the same refs the caller already collected, re-read here
-	// so this function owns ONE definition of "what the closure references".
+	// The caller's own references seed the walk; nothing is re-read here.
 	var queue []string
-	for _, f := range local {
-		pins, err := filePins(f)
-		if err != nil {
-			return nil, nil, err
-		}
-		for _, p := range pins {
-			note(p.repo, p.version)
-			queue = append(queue, p.repo+"@"+p.version)
+	for repo, vers := range seed {
+		for v := range vers {
+			note(repo, v)
+			queue = append(queue, repo+"@"+v)
 		}
 	}
 
@@ -104,7 +141,7 @@ func closureScan(local []string) (map[string]map[string]bool, []foreignPin, erro
 		export, err := closureFetchFn(repo, version)
 		if err != nil {
 			// Reported, not swallowed: the closure is partially unknown and the caller says so.
-			foreign = append(foreign, foreignPin{source: key, file: "<unfetchable>", repo: repo, version: version})
+			foreign = append(foreign, foreignPin{source: key, file: "<unfetchable>", repo: repo, version: version, unfetched: true})
 			continue
 		}
 		for _, f := range closureManifests(export) {
@@ -114,7 +151,7 @@ func closureScan(local []string) (map[string]map[string]bool, []foreignPin, erro
 			}
 			for _, p := range pins {
 				note(p.repo, p.version)
-				foreign = append(foreign, foreignPin{source: key, file: relTo(export, f), ref: refString(p, f), repo: p.repo, version: p.version})
+				foreign = append(foreign, foreignPin{source: key, file: relTo(export, f), repo: p.repo, version: p.version})
 				queue = append(queue, p.repo+"@"+p.version)
 			}
 		}
@@ -199,9 +236,4 @@ func relTo(root, path string) string {
 		return r
 	}
 	return path
-}
-
-// refString is the ref as the reader would find it in `file`.
-func refString(p refPin, _ string) string {
-	return p.raw
 }

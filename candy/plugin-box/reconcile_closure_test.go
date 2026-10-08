@@ -67,7 +67,14 @@ func TestClosureScan_SeesARefOnlyTheClosureNames(t *testing.T) {
 		return "", os.ErrNotExist
 	}
 
-	versions, _, err := closureScan([]string{local, f})
+	seed := map[string]map[string]bool{}
+	for _, fp := range mustPins(t, local, f) {
+		if seed[fp.repo] == nil {
+			seed[fp.repo] = map[string]bool{}
+		}
+		seed[fp.repo][fp.version] = true
+	}
+	versions, _, err := closureScan(seed)
 	if err != nil {
 		t.Fatalf("closureScan: %v", err)
 	}
@@ -133,7 +140,14 @@ func TestClosureScan_ReportsForeignSkewItCannotRepair(t *testing.T) {
 		return "", os.ErrNotExist
 	}
 
-	versions, foreign, err := closureScan([]string{local, f})
+	seed := map[string]map[string]bool{}
+	for _, fp := range mustPins(t, local, f) {
+		if seed[fp.repo] == nil {
+			seed[fp.repo] = map[string]bool{}
+		}
+		seed[fp.repo][fp.version] = true
+	}
+	versions, foreign, err := closureScan(seed)
 	if err != nil {
 		t.Fatalf("closureScan: %v", err)
 	}
@@ -176,17 +190,52 @@ func TestClosureScan_ReportsAnUnfetchableRef(t *testing.T) {
 	defer func() { closureFetchFn = orig }()
 	closureFetchFn = func(repo, version string) (string, error) { return "", os.ErrNotExist }
 
-	_, foreign, err := closureScan([]string{local, f})
+	seed := map[string]map[string]bool{}
+	for _, fp := range mustPins(t, local, f) {
+		if seed[fp.repo] == nil {
+			seed[fp.repo] = map[string]bool{}
+		}
+		seed[fp.repo][fp.version] = true
+	}
+	_, foreign, err := closureScan(seed)
 	if err != nil {
 		t.Fatalf("closureScan must report, not fail: %v", err)
 	}
-	var reported bool
+	var seen bool
 	for _, fp := range foreign {
-		if fp.source == "github.com/opencharly/repo-missing@v9" {
-			reported = true
+		if fp.unfetched && fp.source == "github.com/opencharly/repo-missing@v9" {
+			seen = true
 		}
 	}
-	if !reported {
-		t.Fatalf("an unfetchable closure ref must be REPORTED, got %+v", foreign)
+	if !seen {
+		t.Fatalf("an unfetchable closure ref must be returned with unfetched=true, got %+v", foreign)
 	}
+
+	// THE USER-VISIBLE OUTPUT — the defect this test exists for. An unfetchable ref's version is
+	// the one folded into the target from the same pin, so a skew comparison can never fire for it;
+	// reporting it by skew alone let a half-known closure read as a reconciled one.
+	target := map[string]string{"github.com/opencharly/repo-missing": "v9"}
+	var out strings.Builder
+	skewed, unfetched := reportClosure(&out, foreign, target)
+	if skewed != 0 || unfetched != 1 {
+		t.Fatalf("counts: skewed=%d unfetched=%d, want 0 and 1", skewed, unfetched)
+	}
+	if !strings.Contains(out.String(), "could NOT be fetched") || !strings.Contains(out.String(), "repo-missing@v9") {
+		t.Fatalf("the tool must TELL the user the closure is only partly known, naming the ref; got %q", out.String())
+	}
+}
+
+// mustPins is the same extraction dispatchReconcile's pass 1 uses, so the tests seed the walk
+// through the production reader (R3) rather than a second one.
+func mustPins(t *testing.T, files ...string) []refPin {
+	t.Helper()
+	var out []refPin
+	for _, f := range files {
+		pins, err := filePins(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, pins...)
+	}
+	return out
 }
