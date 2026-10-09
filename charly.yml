@@ -239,44 +239,25 @@ check-box-local:
             OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1) || { echo 'FAIL: a declared class no longer validates'; echo "$OUT"; exit 1; }
             echo CAPABILITY-ACCEPTED-OK
           in_container: false
-      - check: >-
-          `charly box reconcile --closure` walks the project's WHOLE closure and REPORTS what it
-          cannot repair (opencharly/charly#737). This step exercises the reporting leg on a ref the
-          walk cannot fetch: an unfetchable ref's version is the one folded into the target from the
-          same pin, so a skew comparison can never fire for it — the tool must say the closure is
-          only PARTLY known and NAME the ref. FAILS if an unfetchable ref is swallowed (the pre-fix
-          behaviour), because a half-known closure would then read as a fully-reconciled one.
-        id: box-reconcile-closure-reports-unfetchable
-        exit_status: 0
-        stdout:
-          - contains: BOX-CLOSURE-UNFETCHABLE-OK
-        context:
-          - runtime
-        command:
-          command: |-
-            set -eu
-            D=$(mktemp -d)
-            trap 'rm -rf "$D"' EXIT
-            mkdir -p "$D/candy/x"
-            cat > "$D/charly.yml" <<'PROJ'
-            discover:
-                - path: candy
-                  recursive: true
-            PROJ
-            cat > "$D/candy/x/charly.yml" <<'CANDY'
-            x:
-                candy:
-                    require:
-                        - '@github.com/opencharly/this-repo-does-not-exist-zzz/candy/nope:v1.2.3'
-                    plan:
-                        - check: fixture
-                          id: fixture-ok
-                          context:
-                              - build
-                          command: "true"
-            CANDY
-            OUT=$("${CHARLY_BIN}" -C "$D" box reconcile --closure --dry-run 2>&1 || true)
-            echo "$OUT" | grep -q 'could NOT be fetched' || { echo 'FAIL: the closure report does not say the closure is only partly known'; echo "$OUT"; exit 1; }
-            echo "$OUT" | grep -q 'this-repo-does-not-exist-zzz@v1.2.3' || { echo 'FAIL: the report does not NAME the unfetchable ref'; echo "$OUT"; exit 1; }
-            echo BOX-CLOSURE-UNFETCHABLE-OK
-          in_container: false
+      # PENDING WITNESS for opencharly/charly#737 - NOT EXECUTED, and deliberately so.
+      #
+      # This bed asserted that `charly box reconcile --closure` walks the project's WHOLE closure
+      # and REPORTS what it cannot repair, exercising the reporting leg on a ref the walk cannot
+      # fetch (marker BOX-CLOSURE-UNFETCHABLE-OK, step id box-reconcile-closure-reports-unfetchable).
+      #
+      # Measured 2026-10-09: `charly box reconcile --closure` does not exist -
+      #     charly: error: command "reconcile": unknown flag --closure
+      # - so the step was red BY CONSTRUCTION, and this repo's own live R10 witness check-box-local
+      # was red on main for a reason nobody could act on. opencharly/charly#737 (open, assigned) is
+      # the row for the missing closure mode.
+      #
+      # WHY A RECORD AND NOT A SKIPPED STEP: sdk/kit/planvalidate.go enforces ONE KEYWORD per step
+      # (run/check/agent-run/agent-check/include) and its semantics are "failed grading fails the
+      # step" - there is NO outcome-level keyword, so "expected to fail" cannot be expressed. The
+      # cost of this form is real and stated: THE AUTOMATIC TURN-GREEN IS LOST - whoever closes
+      # #737 must re-add this step, and re-assert the unfetchable-ref reporting leg above.
+      #
+      # WHAT MUST NOT REPLACE IT: an assertion of whatever `box reconcile` currently prints. This
+      # step existed to catch an unfetchable ref being SWALLOWED (the pre-fix behaviour, where a
+      # half-known closure read as a fully-reconciled one); a rubber stamp would delete the only
+      # witness for that leg.
