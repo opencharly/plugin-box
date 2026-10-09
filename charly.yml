@@ -110,56 +110,34 @@ check-box-local:
             echo "$OUT" | grep -q 'plugin block declares no providers' || { echo 'FAIL: a plugin block with no capability was not reported'; echo "$OUT"; exit 1; }
             echo CAPABILITY-NO-PROVIDERS-OK
           in_container: false
-      - check: >-
-          a well-formed `<class>:<word>` pair whose class the closed vocabulary does not
-          declare is reported as an UNKNOWN PROVIDER CLASS — naming the class and the set
-          it was checked against — and is never called a grammar error (candy/plugin-box#24,
-          #28). The fixture must name a class `#ProviderClassNames` OMITS: the former
-          fixture used `workflow:lobster`, and `workflow` IS in that closed list, so the
-          manifest declared a perfectly legal capability, the rule correctly reported
-          nothing, and the step passed on a rule that had nothing to say. `zzznotaclass`
-          is genuinely absent, and both gates report it (the CUE pattern AND this rule,
-          since the engine validates an error-tolerant envelope) — so this step goes red
-          if the rule's own wording is lost.
-        id: box-capability-unknown-class
-        exit_status: 0
-        stdout:
-          - contains: CAPABILITY-UNKNOWN-CLASS-OK
-        context:
-          - runtime
-        command:
-          command: |-
-            set -eu
-            D=$(mktemp -d)
-            trap 'rm -rf "$D"' EXIT
-            mkdir -p "$D/candy/x"
-            cat > "$D/charly.yml" <<'PROJ'
-            discover:
-                - path: candy
-                  recursive: true
-            PROJ
-            cat > "$D/candy/x/charly.yml" <<'CANDY'
-            x:
-                candy:
-                    description: fixture - a well-formed capability whose class the closed vocabulary omits
-                    plugin:
-                        source: github.com/opencharly/x/candy/x
-                        providers:
-                            - zzznotaclass:lobster
-                    plan:
-                        - check: the fixture candy is loadable
-                          id: fixture-ok
-                          context:
-                            - build
-                          command: "true"
-            CANDY
-            OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
-            echo "$OUT" | grep -q 'unknown provider class "zzznotaclass"' || { echo 'FAIL: the unknown-class wording is absent'; echo "$OUT"; exit 1; }
-            echo "$OUT" | grep -q 'known: ' || { echo 'FAIL: the known-class set is not enumerated'; echo "$OUT"; exit 1; }
-            echo "$OUT" | grep -q 'workflow' || { echo 'FAIL: the enumerated set no longer includes workflow'; echo "$OUT"; exit 1; }
-            echo "$OUT" | grep -q 'is malformed' && { echo 'FAIL: a well-formed pair is still called "is malformed"'; echo "$OUT"; exit 1; }
-            echo CAPABILITY-UNKNOWN-CLASS-OK
-          in_container: false
+      # PENDING WITNESS for the class-vocabulary chain (opencharly/plugin-box#31 + opencharly/spec#216)
+      # - NOT EXECUTED, and deliberately so.
+      #
+      # This bed asserted that a well-formed `<class>:<word>` whose class the closed vocabulary
+      # omits is reported as an UNKNOWN PROVIDER CLASS, naming the class and the set it was checked
+      # against, and is never called a grammar error.
+      #
+      # Measured 2026-10-09: it is RED BY CONSTRUCTION while that chain is in flight. The rule that
+      # must report it (plugin-box validate_rules.go, reportCapabilityFault) is UNREACHABLE, because
+      # the CUE pattern rejects an undeclared class as "malformed" first - and that pattern can only
+      # be made structural (spec#216) after the replacement guard lands (#31, by the ordering rule
+      # that a guard's replacement must land before the guard it replaces). The cycle is:
+      #   bed green <- rule reachable <- pattern structural (spec#216) <- guard #31 <- bed green
+      # Operator decision (2026-10-09): break it HERE, so the chain can land; the chain's own
+      # post-merge bed run then re-adds this step as live evidence with the rule reachable.
+      #
+      # WHY A RECORD AND NOT A SKIPPED STEP: sdk/kit/planvalidate.go enforces ONE KEYWORD per step
+      # (run/check/agent-run/agent-check/include) with "failed grading fails the step" semantics -
+      # there is NO outcome-level keyword, so "expected to fail" cannot be expressed.
+      #
+      # THE COST, STATED: the automatic turn-green is LOST - whoever lands the chain must restore
+      # this step (its assertion text is preserved in the record above) and re-run the bed.
+      #
+      # AND WHAT MUST NOT REPLACE IT: an assertion of whatever the validator currently prints for
+      # the fixture (`zzznotaclass:lobster` -> "is malformed"). That would convert a witness into a
+      # rubber stamp - and this step exists precisely because it ONCE WAS one (the former
+      # `workflow:lobster` fixture named a class that WAS in the vocabulary, so the rule said
+      # nothing and the step passed on a rule with nothing to say).
       - check: >-
           a genuine grammar error (a capability carrying no `<class>:` prefix) keeps
           the grammar message and does NOT claim an unknown class — the fault the
