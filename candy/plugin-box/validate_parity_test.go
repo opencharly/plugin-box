@@ -42,9 +42,9 @@ func TestPluginCapabilityFaultsAreDistinct(t *testing.T) {
 		}
 	}
 	// The whole point: an unknown class with a perfectly good word is NOT malformed.
-	if _, word, fault := splitPluginCapability("workflow:lobster"); fault != capFaultUnknownClass || word != "lobster" {
+	if _, word, fault := splitPluginCapability("zzznotaclass:lobster"); fault != capFaultUnknownClass || word != "lobster" {
 		t.Errorf("splitPluginCapability(%q) = fault %v word %q, want capFaultUnknownClass / \"lobster\"",
-			"workflow:lobster", fault, word)
+			"zzznotaclass:lobster", fault, word)
 	}
 }
 
@@ -84,6 +84,10 @@ func pluginFaults(providers, requires []string) string {
 		CandyModels: map[string]spec.CandyModel{"myplugin": {Name: "myplugin"}},
 		Candies: map[string]spec.CandyView{
 			"myplugin": {
+				// The ADE rule (validate_rules.go:86) rejects a candy with no description and
+				// its message would mask the capability diagnostic this fixture exists to drive,
+				// so the fixture is valid in every OTHER respect.
+				Description:     "fixture: one disposable plugin candy for the capability rules",
 				IsPlugin:        true,
 				PluginSource:    "github.com/opencharly/plugin-x/candy/plugin-x",
 				PluginProviders: providers,
@@ -111,8 +115,8 @@ func pluginRequiresFaults(requires ...string) string {
 // must NOT claim an unknown class. Without the fix both faults collapse into one false
 // "is malformed" line, which is exactly what this test fails on.
 func TestPluginCapabilityDiagnosticWording(t *testing.T) {
-	got := pluginCandyFaults("workflow:lobster")
-	if !strings.Contains(got, `unknown provider class "workflow"`) {
+	got := pluginCandyFaults("zzznotaclass:lobster")
+	if !strings.Contains(got, `unknown provider class "zzznotaclass"`) {
 		t.Errorf("an unknown class must be reported as such; got: %s", got)
 	}
 	if !strings.Contains(got, "known: ") || !strings.Contains(got, "agent-runtime") {
