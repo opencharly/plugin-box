@@ -55,6 +55,30 @@ func validateCandyReferences(vc *vctx, e *vErr) {
 	}
 }
 
+// reportCapabilityFault interprets ONE capability identity under `subject` and reports its fault,
+// if it has one. THE one reporter shared by `plugin.providers:` and `plugin_requires:`
+// (charly#853, plugin-box#29): the CUE pattern's class segment became STRUCTURAL, so the class
+// vocabulary is checked here for BOTH paths - and two paths must not grow two copies of the same
+// taxonomy (R3). class/word come back so a caller can keep using them after a clean verdict.
+func reportCapabilityFault(subject, capStr string, e *vErr) (class, word string, handled bool) {
+	class, word, fault := splitPluginCapability(capStr)
+	switch fault {
+	case capFaultMalformed:
+		// Also rejected by the CUE gate, and reported here too (same reason).
+		e.Add("%s %q is malformed (want <class>:<word>)", subject, capStr)
+		return class, word, true
+	case capFaultUnknownClass:
+		// NOT a grammar error: `capStr` IS a well-formed <class>:<word> pair. The class is simply
+		// not in the pinned spec's vocabulary, so the actionable fact is the CLASS and the set it
+		// was checked against - reporting "malformed" here sends the reader to fix a word that is
+		// already correct. Also rejected by the CUE gate, but reported here too - see the block
+		// comment above: the engine validates an error-tolerant envelope.
+		e.Add("%s %q: unknown provider class %q (known: %s)", subject, capStr, class, knownProviderClasses)
+		return class, word, true
+	}
+	return class, word, false
+}
+
 // validateCandyContents validates each candy has required content + the mandatory ADE plan.
 func validateCandyContents(vc *vctx, e *vErr) {
 	for name := range vc.models {
@@ -130,21 +154,18 @@ func validateCandyContents(vc *vctx, e *vErr) {
 			if len(v.PluginProviders) == 0 {
 				e.Add("candy %q: plugin block declares no providers", name)
 			}
+			// charly#853 / plugin-box#29: the class vocabulary used to be checked by the CUE
+			// pattern for BOTH paths - `providers:` AND `requires:` - because both name a
+			// #PluginCapability. The pattern's class segment is now STRUCTURAL so that this
+			// rule can name an undeclared class instead of the CUE calling a correct word
+			// "malformed"; that moves the vocabulary check here for `requires:` as well, or
+			// that path would have NO check at all. Same taxonomy, same set as providers:.
+			for i, req := range v.PluginRequires {
+				reportCapabilityFault(fmt.Sprintf("candy %q: plugin_requires[%d] capability", name, i), string(req.Capability), e)
+			}
 			for _, capStr := range v.PluginProviders {
-				class, word, fault := splitPluginCapability(capStr)
-				switch fault {
-				case capFaultMalformed:
-					// Also rejected by the CUE gate, and reported here too (same reason).
-					e.Add("candy %q: plugin capability %q is malformed (want <class>:<word>)", name, capStr)
-					continue
-				case capFaultUnknownClass:
-					// NOT a grammar error: `capStr` IS a well-formed <class>:<word> pair. The
-					// class is simply not in the pinned spec's vocabulary, so the actionable
-					// fact is the CLASS and the set it was checked against — reporting
-					// "malformed" here sends the reader to fix a word that is already correct.
-					// Also rejected by the CUE gate, but reported here too — see the block
-					// comment above: the engine validates an error-tolerant envelope.
-					e.Add("candy %q: plugin capability %q: unknown provider class %q (known: %s)", name, capStr, class, knownProviderClasses)
+				class, word, handled := reportCapabilityFault(fmt.Sprintf("candy %q: plugin capability", name), capStr, e)
+				if handled {
 					continue
 				}
 				if source == "builtin" && vc.env != nil && !slices.Contains(vc.env.ProviderCapabilities, class+":"+word) {

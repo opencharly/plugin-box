@@ -161,6 +161,64 @@ check-box-local:
             echo CAPABILITY-UNKNOWN-CLASS-OK
           in_container: false
       - check: >-
+          a `plugin_requires:` entry whose capability names an UNDECLARED class is reported
+          by the SAME class-vocabulary rule as `providers:` — naming the class and the set
+          it was checked against, and never calling a well-formed pair a grammar error.
+          This is the arm the branch adds: nothing else in this bed evaluates a
+          `plugin_requires` capability, so `box-capability-unknown-class` above (which
+          declares `providers:` only) proves the rule for providers and would stay green
+          even if the requires arm never fired. The fixture therefore declares a VALID
+          provider AND an invalid requires class, so the only reachable fault is the
+          requires one; and the CONTROL run — the same manifest with the `plugin_requires:`
+          block removed — must NOT produce the diagnostic, so this step cannot pass
+          vacuously on a rule that had nothing to say. The authored shape is
+          `plugin: { requires: [ { capability: <class>:<word> } ] }` — STRUCT entries, and `plugin_requires`
+          is the RESOLVED projection of it (`spec/schema/resolvedproject.cue:170`), not the authored key.
+        id: box-capability-unknown-class-in-requires
+        exit_status: 0
+        stdout:
+          - contains: CAPABILITY-REQUIRES-UNKNOWN-CLASS-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            mkdir -p "$D/candy/x"
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            PROJ
+            cat > "$D/candy/x/charly.yml" <<'CANDY'
+            x:
+                candy:
+                    description: fixture - a valid provider plus an UNKNOWN requires class (the arm this branch adds)
+                    plugin:
+                        source: github.com/opencharly/x/candy/x
+                        providers:
+                            - verb:lobster
+                        requires:
+                            - capability: zzznotaclass:lobster
+                    plan:
+                        - check: the fixture candy is loadable
+                          id: fixture-ok
+                          context:
+                            - build
+                          command: "true"
+            CANDY
+            OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
+            echo "$OUT" | grep -q 'unknown provider class "zzznotaclass"' || { echo 'FAIL: the requires arm did not report the unknown class'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'known: ' || { echo 'FAIL: the known-class set is not enumerated'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'workflow' || { echo 'FAIL: the enumerated set no longer includes workflow'; echo "$OUT"; exit 1; }
+            echo "$OUT" | grep -q 'is malformed' && { echo 'FAIL: a well-formed pair is still called "is malformed"'; echo "$OUT"; exit 1; }
+            sed -i '/^ *requires:/,+1d' "$D/candy/x/charly.yml"
+            CTL=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
+            echo "$CTL" | grep -q 'unknown provider class' && { echo 'FAIL: the control (no plugin_requires) still reports an unknown class - the diagnostic is not attributable to the requires arm'; echo "$CTL"; exit 1; }
+            echo CAPABILITY-REQUIRES-UNKNOWN-CLASS-OK
+          in_container: false
+      - check: >-
           a genuine grammar error (a capability carrying no `<class>:` prefix) keeps
           the grammar message and does NOT claim an unknown class — the fault the
           pre-fix wording was correct for stays correct

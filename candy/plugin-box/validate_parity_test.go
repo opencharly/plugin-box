@@ -42,9 +42,9 @@ func TestPluginCapabilityFaultsAreDistinct(t *testing.T) {
 		}
 	}
 	// The whole point: an unknown class with a perfectly good word is NOT malformed.
-	if _, word, fault := splitPluginCapability("workflow:lobster"); fault != capFaultUnknownClass || word != "lobster" {
+	if _, word, fault := splitPluginCapability("zzznotaclass:lobster"); fault != capFaultUnknownClass || word != "lobster" {
 		t.Errorf("splitPluginCapability(%q) = fault %v word %q, want capFaultUnknownClass / \"lobster\"",
-			"workflow:lobster", fault, word)
+			"zzznotaclass:lobster", fault, word)
 	}
 }
 
@@ -71,14 +71,30 @@ func TestKnownProviderClassesMessage(t *testing.T) {
 // plugin capability check) over a one-candy envelope declaring the given providers with an
 // EXTERNAL source (so the builtin-compiled-in arm is skipped and only the capability fault is
 // under test) and returns the joined verdict.
-func pluginCandyFaults(providers ...string) string {
+// pluginFaults is THE fixture for the capability rules: one disposable plugin candy whose
+// providers: and requires: are given, returning the diagnostics. The two paths share one reporter
+// in validate_rules.go (R3), so they share the fixture too - the wrappers below are conveniences,
+// not mirrors.
+func pluginFaults(providers, requires []string) string {
+	reqs := make([]spec.PluginRequirement, len(requires))
+	for i, r := range requires {
+		reqs[i] = spec.PluginRequirement{Capability: spec.PluginCapability(r)}
+	}
 	rp := &spec.ResolvedProject{
 		CandyModels: map[string]spec.CandyModel{"myplugin": {Name: "myplugin"}},
 		Candies: map[string]spec.CandyView{
 			"myplugin": {
+				// The ADE rule (validate_rules.go:110) reports a candy with no description BEFORE it
+				// reaches anything else, and that message would mask the capability diagnostic this
+				// fixture exists to drive - so a Description is supplied. The fixture deliberately
+				// supplies NO plan, so the ADE `plan:` fault (validate_rules.go:112) co-fires into the
+				// verdict as well; every assertion on this fixture is a substring check for the
+				// CAPABILITY diagnostic, which the co-firing fault neither masks nor satisfies.
+				Description:     "fixture: one disposable plugin candy for the capability rules",
 				IsPlugin:        true,
 				PluginSource:    "github.com/opencharly/plugin-x/candy/plugin-x",
 				PluginProviders: providers,
+				PluginRequires:  reqs,
 			},
 		},
 	}
@@ -87,14 +103,23 @@ func pluginCandyFaults(providers ...string) string {
 	return strings.Join(e.msgs, "\n")
 }
 
+// pluginCandyFaults exercises the providers: path (one declared provider kept so the manifest is a
+// plugin at all).
+func pluginCandyFaults(providers ...string) string { return pluginFaults(providers, nil) }
+
+// pluginRequiresFaults exercises the requires: path.
+func pluginRequiresFaults(requires ...string) string {
+	return pluginFaults([]string{"verb:x"}, requires)
+}
+
 // TestPluginCapabilityDiagnosticWording (pb#24) drives the rule end-to-end: an unknown-class
 // capability must produce the ACCURATE contract-mismatch message naming the class and the known
 // set, and must NOT say "malformed"; a genuinely malformed pair must still say "malformed" and
 // must NOT claim an unknown class. Without the fix both faults collapse into one false
 // "is malformed" line, which is exactly what this test fails on.
 func TestPluginCapabilityDiagnosticWording(t *testing.T) {
-	got := pluginCandyFaults("workflow:lobster")
-	if !strings.Contains(got, `unknown provider class "workflow"`) {
+	got := pluginCandyFaults("zzznotaclass:lobster")
+	if !strings.Contains(got, `unknown provider class "zzznotaclass"`) {
 		t.Errorf("an unknown class must be reported as such; got: %s", got)
 	}
 	if !strings.Contains(got, "known: ") || !strings.Contains(got, "agent-runtime") {
@@ -110,5 +135,34 @@ func TestPluginCapabilityDiagnosticWording(t *testing.T) {
 	}
 	if strings.Contains(gotMalformed, "unknown provider class") {
 		t.Errorf("a malformed pair must NOT claim an unknown class; got: %s", gotMalformed)
+	}
+}
+
+// charly#853 / plugin-box#29: the class vocabulary used to be checked by the CUE pattern for BOTH
+// paths, because `providers:` and `requires:` both name a #PluginCapability. The pattern's class
+// segment is now structural so this rule can NAME an undeclared class, which means the vocabulary
+// check for `requires:` has to live here - otherwise widening the CUE would leave that path with no
+// check at all. The spec tests for it moved here (plugin_requires_test.go, plugin_test.go).
+func TestPluginRequiresClassVocabulary(t *testing.T) {
+	// (1) an UNDECLARED class in requires: must be reported, naming the class and the set.
+	got := pluginRequiresFaults("zzznotaclass:lobster")
+	if !strings.Contains(got, "plugin_requires") || !strings.Contains(got, `unknown provider class "zzznotaclass"`) {
+		t.Errorf("an undeclared class in requires: must be named; got: %s", got)
+	}
+	if !strings.Contains(got, "known: ") {
+		t.Errorf("the requires: message must enumerate the known classes; got: %s", got)
+	}
+	if strings.Contains(got, "is malformed") {
+		t.Errorf("a well-formed requires: pair with an unknown class must NOT be called malformed; got: %s", got)
+	}
+	// (2) a DECLARED class must pass untouched.
+	ok := pluginRequiresFaults("verb:enc")
+	if strings.Contains(ok, "unknown provider class") || strings.Contains(ok, "plugin_requires") {
+		t.Errorf("a declared class in requires: must be accepted; got: %s", ok)
+	}
+	// (3) a truly MALFORMED pair keeps the grammar message and does not claim an unknown class.
+	bad := pluginRequiresFaults("colonless")
+	if !strings.Contains(bad, "is malformed (want <class>:<word>)") || strings.Contains(bad, "unknown provider class") {
+		t.Errorf("a malformed requires: capability must keep the grammar message; got: %s", bad)
 	}
 }
