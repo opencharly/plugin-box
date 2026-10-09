@@ -112,3 +112,51 @@ func TestPluginCapabilityDiagnosticWording(t *testing.T) {
 		t.Errorf("a malformed pair must NOT claim an unknown class; got: %s", gotMalformed)
 	}
 }
+
+// pluginRequiresFaults mirrors pluginCandyFaults, putting the capability in `requires:` instead of
+// `providers:` so the two paths can be asserted independently.
+func pluginRequiresFaults(reqs ...spec.PluginRequirement) string {
+	rp := &spec.ResolvedProject{
+		CandyModels: map[string]spec.CandyModel{"myplugin": {Name: "myplugin"}},
+		Candies: map[string]spec.CandyView{
+			"myplugin": {
+				IsPlugin:        true,
+				PluginSource:    "github.com/opencharly/plugin-x/candy/plugin-x",
+				PluginProviders: []string{"verb:x"},
+				PluginRequires:  reqs,
+			},
+		},
+	}
+	e := &vErr{}
+	validateCandyContents(newVctx(rp), e)
+	return strings.Join(e.msgs, "\n")
+}
+
+// charly#853 / plugin-box#29: the class vocabulary used to be checked by the CUE pattern for BOTH
+// paths, because `providers:` and `requires:` both name a #PluginCapability. The pattern's class
+// segment is now structural so this rule can NAME an undeclared class, which means the vocabulary
+// check for `requires:` has to live here - otherwise widening the CUE would leave that path with no
+// check at all. The spec tests for it moved here (plugin_requires_test.go, plugin_test.go).
+func TestPluginRequiresClassVocabulary(t *testing.T) {
+	// (1) an UNDECLARED class in requires: must be reported, naming the class and the set.
+	got := pluginRequiresFaults(spec.PluginRequirement{Capability: "zzznotaclass:lobster"})
+	if !strings.Contains(got, "plugin_requires") || !strings.Contains(got, `unknown provider class "zzznotaclass"`) {
+		t.Errorf("an undeclared class in requires: must be named; got: %s", got)
+	}
+	if !strings.Contains(got, "known: ") {
+		t.Errorf("the requires: message must enumerate the known classes; got: %s", got)
+	}
+	if strings.Contains(got, "is malformed") {
+		t.Errorf("a well-formed requires: pair with an unknown class must NOT be called malformed; got: %s", got)
+	}
+	// (2) a DECLARED class must pass untouched.
+	ok := pluginRequiresFaults(spec.PluginRequirement{Capability: "verb:enc"})
+	if strings.Contains(ok, "unknown provider class") || strings.Contains(ok, "plugin_requires") {
+		t.Errorf("a declared class in requires: must be accepted; got: %s", ok)
+	}
+	// (3) a truly MALFORMED pair keeps the grammar message and does not claim an unknown class.
+	bad := pluginRequiresFaults(spec.PluginRequirement{Capability: "colonless"})
+	if !strings.Contains(bad, "is malformed (want <class>:<word>)") || strings.Contains(bad, "unknown provider class") {
+		t.Errorf("a malformed requires: capability must keep the grammar message; got: %s", bad)
+	}
+}

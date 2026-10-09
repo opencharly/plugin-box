@@ -130,6 +130,24 @@ func validateCandyContents(vc *vctx, e *vErr) {
 			if len(v.PluginProviders) == 0 {
 				e.Add("candy %q: plugin block declares no providers", name)
 			}
+			// charly#853 / plugin-box#29: the class vocabulary used to be checked by the CUE
+			// pattern for BOTH paths - `providers:` AND `requires:` - because both name a
+			// #PluginCapability. The pattern's class segment is now STRUCTURAL so that this
+			// rule can name an undeclared class instead of the CUE calling a correct word
+			// "malformed"; that moves the vocabulary check here for `requires:` as well, or
+			// that path would have NO check at all. Same taxonomy, same set as providers:.
+			for i, req := range v.PluginRequires {
+				capStr := string(req.Capability)
+				class, _, fault := splitPluginCapability(capStr)
+				switch fault {
+				case capFaultMalformed:
+					e.Add("candy %q: plugin_requires[%d] capability %q is malformed (want <class>:<word>)", name, i, capStr)
+					continue
+				case capFaultUnknownClass:
+					e.Add("candy %q: plugin_requires[%d] capability %q: unknown provider class %q (known: %s)", name, i, capStr, class, knownProviderClasses)
+					continue
+				}
+			}
 			for _, capStr := range v.PluginProviders {
 				class, word, fault := splitPluginCapability(capStr)
 				switch fault {
