@@ -84,9 +84,12 @@ func pluginFaults(providers, requires []string) string {
 		CandyModels: map[string]spec.CandyModel{"myplugin": {Name: "myplugin"}},
 		Candies: map[string]spec.CandyView{
 			"myplugin": {
-				// The ADE rule (validate_rules.go:86) rejects a candy with no description and
-				// its message would mask the capability diagnostic this fixture exists to drive,
-				// so the fixture is valid in every OTHER respect.
+				// The ADE rule (validate_rules.go:110) reports a candy with no description BEFORE it
+				// reaches anything else, and that message would mask the capability diagnostic this
+				// fixture exists to drive - so a Description is supplied. The fixture deliberately
+				// supplies NO plan, so the ADE `plan:` fault (validate_rules.go:112) co-fires into the
+				// verdict as well; every assertion on this fixture is a substring check for the
+				// CAPABILITY diagnostic, which the co-firing fault neither masks nor satisfies.
 				Description:     "fixture: one disposable plugin candy for the capability rules",
 				IsPlugin:        true,
 				PluginSource:    "github.com/opencharly/plugin-x/candy/plugin-x",

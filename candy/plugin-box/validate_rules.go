@@ -55,7 +55,6 @@ func validateCandyReferences(vc *vctx, e *vErr) {
 	}
 }
 
-// validateCandyContents validates each candy has required content + the mandatory ADE plan.
 // reportCapabilityFault interprets ONE capability identity under `subject` and reports its fault,
 // if it has one. THE one reporter shared by `plugin.providers:` and `plugin_requires:`
 // (charly#853, plugin-box#29): the CUE pattern's class segment became STRUCTURAL, so the class
@@ -80,6 +79,7 @@ func reportCapabilityFault(subject, capStr string, e *vErr) (class, word string,
 	return class, word, false
 }
 
+// validateCandyContents validates each candy has required content + the mandatory ADE plan.
 func validateCandyContents(vc *vctx, e *vErr) {
 	for name := range vc.models {
 		m := vc.models[name]
