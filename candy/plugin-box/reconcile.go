@@ -22,8 +22,16 @@ import (
 // YAML files, every pin of that repo is rewritten to ONE target version: the newest
 // already-referenced version (default) or the newest tag on the remote (`--remote`). Edits are
 // comment-preserving (yaml.v3 node API) and idempotent. Operates on the current project (cwd; the
-// host's -C / --dir / CHARLY_PROJECT_DIR already resolved os.Getwd before this dispatches). For a
-// multi-repo tree, run it per repo (e.g. `charly -C box/<name> box reconcile`).
+// host's -C / --dir / CHARLY_PROJECT_DIR already resolved os.Getwd before this dispatches).
+//
+// PER PROJECT BY DEFAULT — and that default is a KNOWN GAP (opencharly/charly#737). Walking only
+// <dir>/charly.yml + box/ + candy/ computes the target over THIS project's references alone, so a
+// repo pinned once reads "already reconciled" while the closure it composes needs a newer tag, and
+// a later partial repin makes the skew worse. `--closure` computes the target over the whole
+// closure instead (see reconcile_closure.go); it rewrites only this project's own files — the other
+// repos are read-only shared cache exports, so a closure-wide WRITE is impossible from one project —
+// and REPORTS the skew that belongs to them. Use `--closure` on any tree that composes an imported
+// namespace; a bare per-project run can only ever answer for one project, never for the tree.
 //
 // This word needs NO host reverse-channel coupling at all — it operates purely over sdk/kit
 // (FileExists/IsGitSubmoduleDir/SortStrings/GitLatestTag/RepoGitURL/CompareSemver) +
@@ -31,10 +39,11 @@ import (
 // filesystem/YAML, exactly like the `new`/`labels` words above — zero HostBuild, zero
 // InvokeProvider, zero core reentry.
 
-// reconcileGrammar is the `charly box reconcile [--dry-run] [--remote]` CLI surface.
+// reconcileGrammar is the `charly box reconcile [--dry-run] [--remote] [--closure]` CLI surface.
 type reconcileGrammar struct {
-	DryRun bool `name:"dry-run" help:"Print the pin rewrites without modifying any file."`
-	Remote bool `help:"Align each repo's pins to its newest REMOTE tag (git ls-remote) instead of the newest already-referenced version."`
+	DryRun  bool `name:"dry-run" help:"Print the pin rewrites without modifying any file."`
+	Remote  bool `help:"Align each repo's pins to its newest REMOTE tag (git ls-remote) instead of the newest already-referenced version."`
+	Closure bool `help:"Compute the alignment target over the project's WHOLE closure (every pinned @github repo's own manifests, transitively), not just this project's own files. Rewrites only this project's files and REPORTS the skew that lives in other repos."`
 }
 
 // dispatchReconcile kong-parses the reconcile grammar and runs the two-pass rewrite: collect the
@@ -69,23 +78,36 @@ func dispatchReconcile(args []string) error {
 		}
 		roots[f] = &root
 		sources[f] = data
-		walkScalars(&root, func(s *yaml.Node) {
-			if !deploykit.IsRemoteCandyRef(s.Value) {
-				return
+		// ONE manifest-pin reader (filePins, shared with the closure walk): this pass and the
+		// closure scan must never disagree about what a manifest references (R3).
+		pins, perr := filePins(f)
+		if perr != nil {
+			return perr
+		}
+		for _, p := range pins {
+			if refVersions[p.repo] == nil {
+				refVersions[p.repo] = make(map[string]bool)
 			}
-			p := spec.ParseRemoteRef(s.Value)
-			if p.Version == "" {
-				return // unpinned ref — nothing to align
-			}
-			if refVersions[p.RepoPath] == nil {
-				refVersions[p.RepoPath] = make(map[string]bool)
-			}
-			refVersions[p.RepoPath][p.Version] = true
-		})
+			refVersions[p.repo][p.version] = true
+		}
 	}
 	if len(refVersions) == 0 {
 		fmt.Println("no @github pins found — nothing to reconcile")
 		return nil
+	}
+
+	// CLOSURE MODE (charly#737): recompute the version set over the WHOLE closure — this
+	// project's own files PLUS every pinned repo's own manifests, transitively, read out of the
+	// fetch cache — so a repo this project pins ONCE is aligned to what the closure actually
+	// requires instead of reading "already reconciled" while the tree is skewed.
+	var foreign []foreignPin
+	if g.Closure {
+		closureVersions, fp, cerr := closureScan(refVersions)
+		if cerr != nil {
+			return cerr
+		}
+		refVersions = closureVersions
+		foreign = fp
 	}
 
 	// Compute the target version per repo.
@@ -143,8 +165,17 @@ func dispatchReconcile(args []string) error {
 			fmt.Printf("%s -> %s (was at %d versions)\n", r, target[r], len(refVersions[r]))
 		}
 	}
+	// REPORT what this project cannot repair (closure mode only): a pin that lives in another repo
+	// of the closure is that repo's to advance, and a ref the walk could not fetch at all leaves
+	// the closure only PARTLY known — both are named, so this project's own "already reconciled"
+	// can never stand for the whole tree.
+	_, unfetched := reportClosure(os.Stdout, foreign, target)
+
 	if len(rewrites) == 0 {
-		fmt.Println("already reconciled — every repo's pins are at one version")
+		fmt.Println("already reconciled — this project's own pins are at one version")
+		if unfetched > 0 {
+			fmt.Printf("…but the closure is only PARTLY known: %d ref(s) could not be fetched (above)\n", unfetched)
+		}
 		return nil
 	}
 	if g.DryRun {

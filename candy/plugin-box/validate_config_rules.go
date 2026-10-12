@@ -110,6 +110,19 @@ func validateBoxBaseFrom(cfg *spec.Config, opts spec.ResolveOpts, errs *spec.Val
 		if img.HasBaseFromConflict() {
 			errs.Add("box %q: from: and base: are mutually exclusive (set one; omit both for a scratch box)", name)
 		}
+		// charly#853: the base: VALUE was never checked, only the base/from relationship, so
+		// `charly box validate` reported OK for a box that cannot build and `box build` then died
+		// in containers/image ("parsing image name ...: invalid reference format").
+		//
+		// A leading "@" is charly's NAMESPACE-ref syntax, which is not an image name at all - the
+		// one case that is syntactically impossible, so it is an ERROR and needs no registry lookup.
+		//
+		// The unresolvable bare SHORT NAME is deliberately NOT an error here: whether it resolves
+		// depends on the host's containers-registries.conf, so an unconditional error would be a
+		// false red on a correctly configured host.
+		if b := img.Base; strings.HasPrefix(b, "@") {
+			errs.Add("box %q: base: %q is not an image reference (a namespace ref is not an image name)", name, b)
+		}
 	}
 }
 

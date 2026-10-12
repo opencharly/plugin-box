@@ -203,3 +203,31 @@ func TestValidateBuilderRefs_PerImageNotFound(t *testing.T) {
 		t.Errorf("want 'is not found', got: %v", errs.Errors)
 	}
 }
+
+// charly#853: validate must reject a base: that cannot be an image name, and must NOT reject the
+// cases that depend on the host.
+func TestBoxBaseValueMustBeAnImageReference(t *testing.T) {
+	cases := []struct {
+		name   string
+		base   string
+		reject bool
+	}{
+		{"fully-qualified ref", "quay.io/fedora/fedora:43", false},
+		{"bare short name (host-dependent: NOT our error)", "fedora", false},
+		{"empty (scratch box)", "", false},
+		{"@github namespace ref (impossible as an image name)", "@github.com/opencharly/distro-cachyos:v2026.281.1001", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &spec.Config{Box: boxMapOf(map[string]spec.BoxConfig{"b": {Base: tc.base}})}
+			errs := &spec.ValidationError{}
+			validateBoxBaseFrom(cfg, spec.ResolveOpts{}, errs)
+			if tc.reject && !errs.HasErrors() {
+				t.Errorf("validateBoxBaseFrom accepted base: %q, which cannot be an image name", tc.base)
+			}
+			if !tc.reject && errs.HasErrors() {
+				t.Errorf("validateBoxBaseFrom rejected base: %q: %v", tc.base, errs.Error())
+			}
+		})
+	}
+}
