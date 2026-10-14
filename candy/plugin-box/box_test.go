@@ -104,12 +104,14 @@ func TestNewGrammar_Parse(t *testing.T) {
 	}
 }
 
-// TestPullGrammar_Parse confirms `box pull` accepts the required box positional plus the two
-// optional --tag/--platform flags — byte-identical to the former static BoxPullCmd Kong leaf
-// (FINAL/K5 unit 6a M4c).
+// TestPullGrammar_Parse confirms `box pull` accepts the required box positional plus the optional
+// --tag flag — byte-identical to the former static BoxPullCmd Kong leaf (FINAL/K5 unit 6a M4c).
+//
+// It also asserts that `--platform` is GONE (opencharly/plugin-box#40): it was parsed and never
+// read, so this test now fails if anyone re-adds a flag with no consumer behind it.
 func TestPullGrammar_Parse(t *testing.T) {
 	var g pullGrammar
-	if _, err := parseLeaf("pull", &g, []string{"jupyter", "--tag", "2026.100.0000", "--platform", "linux/amd64"}); err != nil {
+	if _, err := parseLeaf("pull", &g, []string{"jupyter", "--tag", "2026.100.0000"}); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	if g.Box != "jupyter" {
@@ -118,13 +120,14 @@ func TestPullGrammar_Parse(t *testing.T) {
 	if g.Tag != "2026.100.0000" {
 		t.Errorf("Tag = %q, want 2026.100.0000", g.Tag)
 	}
-	if g.Platform != "linux/amd64" {
-		t.Errorf("Platform = %q, want linux/amd64", g.Platform)
+	if _, err := parseLeaf("pull", &g, []string{"jupyter", "--platform", "linux/amd64"}); err == nil {
+		t.Error("`box pull --platform` still parses: the flag was deleted as dead, so a re-added spelling must fail loudly rather than be silently accepted again")
 	}
 }
 
-// TestPullGrammar_Parse_MinimalArgs confirms Tag/Platform default to empty (unset) when omitted —
-// dispatchPull relies on this to decide whether to forward them in the reentry argv.
+// TestPullGrammar_Parse_MinimalArgs confirms Tag defaults to empty (unset) when omitted —
+// dispatchPull relies on this to decide whether to forward it in the reentry argv. The platform
+// assertion is gone with the flag itself (opencharly/plugin-box#40).
 func TestPullGrammar_Parse_MinimalArgs(t *testing.T) {
 	var g pullGrammar
 	if _, err := parseLeaf("pull", &g, []string{"ghcr.io/opencharly/jupyter:v1"}); err != nil {
@@ -135,9 +138,6 @@ func TestPullGrammar_Parse_MinimalArgs(t *testing.T) {
 	}
 	if g.Tag != "" {
 		t.Errorf("Tag = %q, want empty", g.Tag)
-	}
-	if g.Platform != "" {
-		t.Errorf("Platform = %q, want empty", g.Platform)
 	}
 }
 
