@@ -82,7 +82,7 @@ jobs:
               }
               await new Promise((r) => setTimeout(r, Number(process.env.POLL_INTERVAL_MS)));
             }
-            core.info(`PR #${pr.number} not merged within 5m — sweep still runs; next validator completion self-heals`);
+            core.info(`PR #${pr.number} not merged within ${Number(process.env.READINESS_WINDOW_MS) / 60000}m — sweep still runs; next validator completion self-heals`);
 
   tag:
     if: >
