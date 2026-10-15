@@ -85,7 +85,7 @@ func TestBoxBaseFromXOR_RejectsConflict(t *testing.T) {
 }
 
 // TestValidateBuildTunables calls validateBuildTunables directly (defaults + per-box
-// jobs/podman_jobs/cache/keep_* range checks — raw config a projection does not carry).
+// jobs/stage_parallelism/cache/keep_* range checks — raw config a projection does not carry).
 func TestValidateBuildTunables(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -93,12 +93,12 @@ func TestValidateBuildTunables(t *testing.T) {
 		wantErr string // substring; "" = expect no error
 	}{
 		{"all unset is valid", spec.BoxConfig{}, ""},
-		{"valid full set", spec.BoxConfig{Jobs: new(4), PodmanJobs: new(0), PodmanJobsCap: new(8), Cache: "image", ContextIgnore: []string{"image", ".check"}}, ""},
+		{"valid full set", spec.BoxConfig{Jobs: new(4), StageParallelism: new(0), StageParallelismCap: new(8), Cache: "image", ContextIgnore: []string{"image", ".check"}}, ""},
 		{"jobs zero rejected", spec.BoxConfig{Jobs: new(0)}, "jobs must be >= 1"},
 		{"jobs negative rejected", spec.BoxConfig{Jobs: new(-2)}, "jobs must be >= 1"},
-		{"podman_jobs negative rejected", spec.BoxConfig{PodmanJobs: new(-1)}, "podman_jobs must be >= 0"},
-		{"podman_jobs zero allowed (auto)", spec.BoxConfig{PodmanJobs: new(0)}, ""},
-		{"podman_jobs_cap zero rejected", spec.BoxConfig{PodmanJobsCap: new(0)}, "podman_jobs_cap must be >= 1"},
+		{"stage_parallelism negative rejected", spec.BoxConfig{StageParallelism: new(-1)}, "stage_parallelism must be >= 0"},
+		{"stage_parallelism zero allowed (auto)", spec.BoxConfig{StageParallelism: new(0)}, ""},
+		{"stage_parallelism_cap zero rejected", spec.BoxConfig{StageParallelismCap: new(0)}, "stage_parallelism_cap must be >= 1"},
 		{"bad cache mode rejected", spec.BoxConfig{Cache: "bogus"}, "cache must be one of"},
 		{"cache none allowed", spec.BoxConfig{Cache: "none"}, ""},
 		{"empty context_ignore entry rejected", spec.BoxConfig{ContextIgnore: []string{"image", "  "}}, "context_ignore[1] must not be empty"},

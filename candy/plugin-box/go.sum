@@ -67,10 +67,10 @@ github.com/opencharly/plugin-egress/candy/plugin-egress v0.2026250.951 h1:5UBXwb
 github.com/opencharly/plugin-egress/candy/plugin-egress v0.2026250.951/go.mod h1:5Uz4H7GYjW9WS8yPJGlr+dRv/jrR985d+PbaxJeAJZ8=
 github.com/opencharly/plugin-init/candy/plugin-init v0.2026240.1727 h1:O+O561QPoYTMQJJeD5agPwpWWEuVdK311H6l/FKjdCU=
 github.com/opencharly/plugin-init/candy/plugin-init v0.2026240.1727/go.mod h1:TFRtupIf/As+ETNbtEr0v+kEYUmNiDqBFKDduymv3x4=
-github.com/opencharly/sdk v0.2026282.1057 h1:Fh4UaOZh1Oyujfy9OK2pcWQ1cVfwwT+NySchiQ47jdY=
-github.com/opencharly/sdk v0.2026282.1057/go.mod h1:UNQWk7xAgwY1bgr4DLi2jbXCpGpguts2A2vX+yCgGSU=
-github.com/opencharly/spec v0.2026282.1056 h1:RMxSGkl5sz5A5eaJ3/JjajZTLJ4dTdA839bD6snPoGA=
-github.com/opencharly/spec v0.2026282.1056/go.mod h1:VrjzjP2glMbDwP4JNm50OV0MraHFZnFKTl+bVlouoso=
+github.com/opencharly/sdk v0.2026287.2213 h1:blTuUEAaN2blAajdFKYh1gnYNwbLgvmUgOSlSK9zOqw=
+github.com/opencharly/sdk v0.2026287.2213/go.mod h1:lf3rmumA7gpiHYs7IBzHpoLiic16CeuO7TjuZZvAQ2Y=
+github.com/opencharly/spec v0.2026287.1848 h1:fPs6PSxwP3NHRXZvfXj/w1nKtW5p0zoZO3kODnV+ugg=
+github.com/opencharly/spec v0.2026287.1848/go.mod h1:VrjzjP2glMbDwP4JNm50OV0MraHFZnFKTl+bVlouoso=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
