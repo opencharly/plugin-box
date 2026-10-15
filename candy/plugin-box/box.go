@@ -156,13 +156,18 @@ type validateGrammar struct {
 
 // --- box pull ---
 
-// pullGrammar is the `charly box pull <box> [--tag] [--platform]` CLI surface — byte-identical to
-// the former static BoxPullCmd Kong leaf (FINAL/K5 unit 6a M4c): same positional, same two flags,
-// same help text, so `charly box pull --help` renders unchanged.
+// pullGrammar is the `charly box pull <box> [--tag]` CLI surface — byte-identical to the former
+// static BoxPullCmd Kong leaf (FINAL/K5 unit 6a M4c): same positional, same help text, so
+// `charly box pull --help` renders unchanged.
+//
+// `--platform` was DELETED (opencharly/plugin-box#40), not implemented: the flag was parsed and
+// never read — `dispatchPull` invokes the compiled-in `build:ensure` word and threads no platform —
+// so it advertised a capability that did not exist. Platform selection lives where it is real: a
+// plugin artifact's descriptor selection (sdk/artifactkit) and the registry consumption legs, and
+// for an IMAGE pull it belongs to the engine/drive interface, never a charly flag.
 type pullGrammar struct {
-	Box      string `arg:"" help:"Box name (short, resolved via charly.yml), fully-qualified ref, or @github.com/org/repo/box[:version]"`
-	Tag      string `name:"tag" help:"Image CalVer tag when resolving a short name (empty = resolve from charly.yml metadata or error with explicit guidance)"`
-	Platform string `name:"platform" help:"Target platform (default: host)"`
+	Box string `arg:"" help:"Box name (short, resolved via charly.yml), fully-qualified ref, or @github.com/org/repo/box[:version]"`
+	Tag string `name:"tag" help:"Image CalVer tag when resolving a short name (empty = resolve from charly.yml metadata or error with explicit guidance)"`
 }
 
 // dispatchPull ensures an image is present in local storage by INVOKING the peer COMPILED-IN
@@ -176,8 +181,9 @@ type pullGrammar struct {
 // so build:ensure's pull/build-fallback picks up the requested tag — byte-identical to the former
 // core Run's `buildkit.ResolveBox(cfg,box,tag).Registry/.Name` → ResolveShellImageRef path, but off
 // the envelope (registry/name are tag-independent), so no loader is needed plugin-side. A
-// full/remote ref already carries its own tag. --platform stays a no-op (the former Run never
-// threaded it to the ensure drive either).
+// full/remote ref already carries its own tag. There is no platform knob: the former Run never
+// threaded one to the ensure drive either, and the flag that pretended otherwise is deleted
+// (opencharly/plugin-box#40) rather than left as a no-op spelling.
 func dispatchPull(hc *hostClient, args []string) error {
 	var g pullGrammar
 	if done, err := parseLeaf("pull", &g, args); err != nil || done {
