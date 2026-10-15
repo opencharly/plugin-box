@@ -231,16 +231,16 @@ func dispatchPull(hc *hostClient, args []string) error {
 // CHARLY_PODMAN_JOBS keep working — Kong resolves them in-plugin at parse time and dispatchBuild
 // threads the resolved values into the spec.BuildRequest it invokes build:box with.
 type buildGrammar struct {
-	Boxes           []string `arg:"" optional:"" help:"Boxes to build (default: all enabled; the sentinel 'all' is equivalent). Supports remote refs (github.com/org/repo/box[@version])"`
-	Push            bool     `name:"push" help:"Push to registry after building"`
-	Tag             string   `name:"tag" help:"Override tag (default: CalVer)"`
-	Platform        string   `name:"platform" help:"Target platform (default: host platform)"`
-	Cache           string   `name:"cache" help:"Build cache type: registry, image, gha, none (default: auto)" env:"CHARLY_BUILD_CACHE"`
-	NoCache         bool     `name:"no-cache" help:"Disable build cache entirely"`
-	Jobs            int      `name:"jobs" help:"Max concurrent image builds per DAG level (0=auto: defaults.jobs, else 4)" env:"CHARLY_BUILD_JOBS"`
-	PodmanJobs      int      `name:"podman-jobs" help:"Stages per podman build (0=auto: min(NCPU, defaults.podman_jobs_cap))" env:"CHARLY_PODMAN_JOBS"`
-	IncludeDisabled bool     `name:"include-disabled" help:"Build boxes with enabled: false in charly.yml (does not modify the file). Use for one-off operational rebuilds without flipping authored config."`
-	DevLocalPkg     bool     `name:"dev-local-pkg" help:"Build localpkg candies (the charly toolchain) from LOCAL in-development source instead of downloading the published release. Set automatically for disposable check-bed image builds so a bed tests in-development code; never on a production box build."`
+	Boxes            []string `arg:"" optional:"" help:"Boxes to build (default: all enabled; the sentinel 'all' is equivalent). Supports remote refs (github.com/org/repo/box[@version])"`
+	Push             bool     `name:"push" help:"Push to registry after building"`
+	Tag              string   `name:"tag" help:"Override tag (default: CalVer)"`
+	Platform         string   `name:"platform" help:"Target platform (default: host platform)"`
+	Cache            string   `name:"cache" help:"Build cache type: registry, image, gha, none (default: auto)" env:"CHARLY_BUILD_CACHE"`
+	NoCache          bool     `name:"no-cache" help:"Disable build cache entirely"`
+	Jobs             int      `name:"jobs" help:"Max concurrent image builds per DAG level (0=auto: defaults.jobs, else 4)" env:"CHARLY_BUILD_JOBS"`
+	StageParallelism int      `name:"podman-jobs" help:"Stages per podman build (0=auto: min(NCPU, defaults.stage_parallelism_cap))" env:"CHARLY_PODMAN_JOBS"`
+	IncludeDisabled  bool     `name:"include-disabled" help:"Build boxes with enabled: false in charly.yml (does not modify the file). Use for one-off operational rebuilds without flipping authored config."`
+	DevLocalPkg      bool     `name:"dev-local-pkg" help:"Build localpkg candies (the charly toolchain) from LOCAL in-development source instead of downloading the published release. Set automatically for disposable check-bed image builds so a bed tests in-development code; never on a production box build."`
 }
 
 // dispatchBuild runs the `charly box build` body IN-PLUGIN (P8b — the former hidden core
@@ -274,17 +274,17 @@ func dispatchBuild(hc *hostClient, args []string) error {
 	}
 
 	req := spec.BuildRequest{
-		Boxes:           boxes,
-		Tag:             tag,
-		Dir:             dir,
-		IncludeDisabled: g.IncludeDisabled,
-		DevLocalPkg:     g.DevLocalPkg,
-		Push:            g.Push,
-		Platform:        g.Platform,
-		Cache:           g.Cache,
-		NoCache:         g.NoCache,
-		Jobs:            g.Jobs,
-		PodmanJobs:      g.PodmanJobs,
+		Boxes:            boxes,
+		Tag:              tag,
+		Dir:              dir,
+		IncludeDisabled:  g.IncludeDisabled,
+		DevLocalPkg:      g.DevLocalPkg,
+		Push:             g.Push,
+		Platform:         g.Platform,
+		Cache:            g.Cache,
+		NoCache:          g.NoCache,
+		Jobs:             g.Jobs,
+		StageParallelism: g.StageParallelism,
 	}
 
 	// Remote-ref pivot: detection is pure (a box arg that is itself a remote @ref, or a thin

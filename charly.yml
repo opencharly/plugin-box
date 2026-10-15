@@ -338,3 +338,113 @@ check-box-local:
             echo "$OUT" | grep -q 'this-repo-does-not-exist-zzz@v1.2.3' || { echo 'FAIL: the report does not NAME the unfetchable ref'; echo "$OUT"; exit 1; }
             echo BOX-CLOSURE-UNFETCHABLE-OK
           in_container: false
+
+      # ---------------------------------------------------------------------------
+      # TUNABLES ARMS — the same instrument as the grammar arms above, with THIS
+      # migration's retired spelling as its subject (opencharly/plugin-box#46: the
+      # spec/sdk contract migration). An instrument travels; its subject does not.
+      #
+      # The rule under test is validateBuildTunables, whose message shape is MEASURED
+      # at the module boundary (mutation M1 in the PR body produced exactly
+      # `defaults: podman_jobs must be >= 0, got -1` before the rename, and
+      # `defaults: stage_parallelism must be >= 0, got -1` after it). The CLI reachability
+      # of that rule is what the FIRST run of this arm confirms — which is why the arm
+      # asserts the message the rule produces rather than a message I expect it to.
+      # ---------------------------------------------------------------------------
+      - check: >-
+          the MIGRATED build tunables, NEGATIVE arm: the retired key `podman_jobs` no longer
+          produces the retired diagnostic — the rule reads the migrated key, not the old
+          spelling (opencharly/plugin-box#46). WHAT THIS ARM DOES NOT CLAIM, because the run
+          measured otherwise: the retired key is not REJECTED — an undeclared key under
+          `defaults:` validates clean and is silently ignored (exit 0, `0 errors`), so an
+          operator whose charly.yml still says `podman_jobs` loses the setting without a word.
+          That is reported and FILED (opencharly/spec#241) rather than dressed as a rejection
+          this arm does not witness.
+        id: box-tunables-retired-key
+        exit_status: 0
+        stdout:
+          - contains: BOX-TUNABLES-RETIRED-KEY-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            EV=".check/grammar-arms/box-tunables-retired-key.log"
+            mkdir -p "$(dirname "$EV")"
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            defaults:
+                podman_jobs: -1
+            PROJ
+            mkdir -p "$D/candy/x"
+            {
+              echo "binary under test: ${CHARLY_BIN}"
+              echo "version: $("${CHARLY_BIN}" version 2>/dev/null | tail -1)"
+              echo "invocation: box validate  (defaults.podman_jobs = -1, the RETIRED key)"
+              set +e
+              OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1)
+              RC=$?
+              set -e
+              echo "exit: $RC"
+              echo "--- output ---"
+              echo "$OUT"
+            } > "$EV" 2>&1 || { cat "$EV"; exit 1; }
+            grep -q '^binary under test: ' "$EV" || { cat "$EV"; exit 1; }
+            grep -qE '^version: .*2026\.[0-9]{3}\.[0-9]{4}' "$EV" || { echo 'FAIL: the binary under test reports no CalVer version, so it is not a valid instrument (R9)'; cat "$EV"; exit 1; }
+            grep -q 'podman_jobs must be >= 0' "$EV" && { echo 'FAIL: the RETIRED diagnostic still fires - the rule still reads the retired key'; cat "$EV"; exit 1; }
+            if grep -q 'WARNING' "$EV" && grep 'WARNING' "$EV" | grep -qv 'dev/worktree build'; then
+              echo 'FAIL: a warning appeared that is not the known benign dev/worktree notice'; cat "$EV"; exit 1
+            fi
+            cat "$EV"
+            echo BOX-TUNABLES-RETIRED-KEY-OK
+          in_container: false
+      - check: >-
+          the MIGRATED build tunables, POSITIVE arm, same run: the MIGRATED key
+          `stage_parallelism` IS the tunable, and the diagnostic names it — the message
+          validateBuildTunables produces, measured at the module boundary by mutation M1.
+        id: box-tunables-migrated-key
+        exit_status: 0
+        stdout:
+          - contains: BOX-TUNABLES-MIGRATED-KEY-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            EV=".check/grammar-arms/box-tunables-migrated-key.log"
+            mkdir -p "$(dirname "$EV")"
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            defaults:
+                stage_parallelism: -1
+            PROJ
+            mkdir -p "$D/candy/x"
+            {
+              echo "binary under test: ${CHARLY_BIN}"
+              echo "version: $("${CHARLY_BIN}" version 2>/dev/null | tail -1)"
+              echo "invocation: box validate  (defaults.stage_parallelism = -1, the MIGRATED key)"
+              set +e
+              OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1)
+              RC=$?
+              set -e
+              echo "exit: $RC"
+              echo "--- output ---"
+              echo "$OUT"
+            } > "$EV" 2>&1 || { cat "$EV"; exit 1; }
+            grep -q '^binary under test: ' "$EV" || { cat "$EV"; exit 1; }
+            grep -qE '^version: .*2026\.[0-9]{3}\.[0-9]{4}' "$EV" || { echo 'FAIL: the binary under test reports no CalVer version, so it is not a valid instrument (R9)'; cat "$EV"; exit 1; }
+            grep -q 'stage_parallelism must be >= 0' "$EV" || { echo 'FAIL: the migrated tunable was not validated by name - the rule did not run, or does not name the key the user can type'; cat "$EV"; exit 1; }
+            if grep -q 'WARNING' "$EV" && grep 'WARNING' "$EV" | grep -qv 'dev/worktree build'; then
+              echo 'FAIL: a warning appeared that is not the known benign dev/worktree notice'; cat "$EV"; exit 1
+            fi
+            cat "$EV"
+            echo BOX-TUNABLES-MIGRATED-KEY-OK
+          in_container: false

@@ -177,8 +177,8 @@ func TestBuildGrammar_Parse(t *testing.T) {
 	if g.Jobs != 8 {
 		t.Errorf("Jobs = %d, want 8", g.Jobs)
 	}
-	if g.PodmanJobs != 2 {
-		t.Errorf("PodmanJobs = %d, want 2", g.PodmanJobs)
+	if g.StageParallelism != 2 {
+		t.Errorf("StageParallelism = %d, want 2", g.StageParallelism)
 	}
 	if !g.IncludeDisabled {
 		t.Error("IncludeDisabled = false, want true")
@@ -233,7 +233,7 @@ func TestAcquireBuildActivityLock_WritesContentAndReleases(t *testing.T) {
 }
 
 // TestBuildGrammar_JobsEnvBindings verifies the Kong env bindings on the build parallelism +
-// cache flags — CHARLY_BUILD_JOBS → Jobs, CHARLY_PODMAN_JOBS → PodmanJobs, CHARLY_BUILD_CACHE →
+// cache flags — CHARLY_BUILD_JOBS → Jobs, CHARLY_PODMAN_JOBS → StageParallelism, CHARLY_BUILD_CACHE →
 // Cache. Moved from charly/build_jobs_test.go (P8b — the former core BuildCmd is DELETED; the env
 // bindings now live on this grammar), so the bindings can't silently regress.
 func TestBuildGrammar_JobsEnvBindings(t *testing.T) {
@@ -254,8 +254,8 @@ func TestBuildGrammar_JobsEnvBindings(t *testing.T) {
 	if cli.Build.Jobs != 6 {
 		t.Errorf("Jobs from CHARLY_BUILD_JOBS = %d, want 6", cli.Build.Jobs)
 	}
-	if cli.Build.PodmanJobs != 9 {
-		t.Errorf("PodmanJobs from CHARLY_PODMAN_JOBS = %d, want 9", cli.Build.PodmanJobs)
+	if cli.Build.StageParallelism != 9 {
+		t.Errorf("StageParallelism from CHARLY_PODMAN_JOBS = %d, want 9", cli.Build.StageParallelism)
 	}
 	if cli.Build.Cache != "registry" {
 		t.Errorf("Cache from CHARLY_BUILD_CACHE = %q, want registry", cli.Build.Cache)
@@ -278,7 +278,7 @@ func TestBuildGrammar_Parse_MinimalArgs(t *testing.T) {
 	if g.Tag != "" || g.Platform != "" || g.Cache != "" {
 		t.Errorf("string flags = %+v, want all empty", g)
 	}
-	if g.Jobs != 0 || g.PodmanJobs != 0 {
+	if g.Jobs != 0 || g.StageParallelism != 0 {
 		t.Errorf("int flags = %+v, want all zero", g)
 	}
 }
