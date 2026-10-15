@@ -72,8 +72,8 @@ jobs:
             }
             const pr = prs[0];
             const deadline = Date.now() + Number(process.env.READINESS_WINDOW_MS);
+            const MS_PER_MINUTE = 60000;   // named: milliseconds in a minute
             while (Date.now() < deadline) {
-              const MS_PER_MINUTE = 60000;   // named: milliseconds in a minute
               const { data: p } = await github.rest.pulls.get({
                 ...context.repo, pull_number: pr.number,
               });
