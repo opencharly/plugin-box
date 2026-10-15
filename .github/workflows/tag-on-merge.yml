@@ -85,9 +85,6 @@ jobs:
             core.info(`PR #${pr.number} not merged within ${Number(process.env.READINESS_WINDOW_MS) / 60000}m — sweep still runs; next validator completion self-heals`);
 
   tag:
-    if: >
-      github.event_name == 'push' ||
-      github.event.workflow_run.conclusion == 'success'
     needs: wait-for-merge
     uses: opencharly/.github/.github/workflows/tag-on-merge.yml@main
     secrets: inherit
