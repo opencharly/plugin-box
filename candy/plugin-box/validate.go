@@ -107,6 +107,15 @@ func runValidateEngine(ctx context.Context, exec *sdk.Executor, dir string, incl
 	runSchemaAndRemoteChecks(ctx, exec, vc, cfg, dir, opts, schema)
 	runRawConfigChecks(cfg, distroCfg, builderCfg, e)
 
+	// Skill bodies, composition-independent. CollectSkills reads a body only for skills whose owner is in
+	// a composed box chain — a label-size policy — so a repo that authors skill nodes but composes no box
+	// had no check that could fail on an absent or misplaced body (opencharly/opencharly#530).
+	if cfg != nil {
+		if _, err := deploykit.CollectSkillBodies(cfg, vc.dk); err != nil {
+			e.Add("skills: %v", err)
+		}
+	}
+
 	// Order is load-bearing for output parity: the resolve diagnostics, then the CUE/remote-candy
 	// findings (which the host used to contribute in exactly this slot), then the plugin's own
 	// per-kind/op + graph + raw-config findings.
