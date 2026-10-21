@@ -448,3 +448,141 @@ check-box-local:
             cat "$EV"
             echo BOX-TUNABLES-MIGRATED-KEY-OK
           in_container: false
+
+      # ---------------------------------------------------------------------------
+      # THE IMAGE-OWNER SHAPE (opencharly/sdk#434, operator ruling): an image candy
+      # (`base:` / `from:`) may not own a `skill:`. The node is re-homed onto a package
+      # candy the image composes, and until it is, validate must say so LOUDLY and name
+      # that fix. This is the product-boundary witness for validateSkillOwners.
+      # ---------------------------------------------------------------------------
+      - check: >-
+          an IMAGE candy owning a `skill:` is REJECTED with the ruling's message — it names
+          the node and the owner, says a `candy:` with `base:`/`from:` is an image with no
+          source directory, names the fix verbatim, and cites opencharly/sdk#434. The
+          fixture carries an IN-LINE `content:`, which is the arm that validated CLEAN
+          (exit 0) before the rule: the shape is what is forbidden, not the missing body,
+          so this step FAILS on the pre-fix engine. Its control — the SAME skill re-owned
+          by the package candy the image composes, with its body beside that candy — must
+          validate clean, so the step cannot pass by rejecting everything.
+        id: box-skill-image-owner
+        exit_status: 0
+        stdout:
+          - contains: BOX-SKILL-IMAGE-OWNER-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            EV=".check/grammar-arms/box-skill-image-owner.log"
+            mkdir -p "$(dirname "$EV")"
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            mkdir -p "$D/candy/pcandy/.agents/skills/psk1"
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+
+            pimage:
+                candy:
+                    base: docker.io/library/alpine:3.20
+                    candy:
+                        - pcandy
+                    plan:
+                        - check: fixture
+                          id: fixture-ok
+                          context:
+                            - build
+                          command: "true"
+
+            psk1:
+                skill:
+                    family: test
+                    owner: pimage
+                    description: owned by the IMAGE - the shape the ruling forbids
+                    content: |
+                        Body prose owned by the image.
+            PROJ
+            cat > "$D/candy/pcandy/charly.yml" <<'CANDY'
+            pcandy:
+                candy:
+                    description: the package candy the image composes
+                    plan:
+                        - run: no-op fixture step
+                          command: "true"
+                        - check: the fixture candy is loadable
+                          id: fixture-ok
+                          exit_status: 0
+                          command: "true"
+            CANDY
+            printf -- '---\nname: psk1\ndescription: package-candy-owned skill\n---\n\nBody prose owned by the package candy.\n' \
+              > "$D/candy/pcandy/.agents/skills/psk1/SKILL.md"
+            {
+              echo "binary under test: ${CHARLY_BIN}"
+              echo "version: $("${CHARLY_BIN}" version 2>/dev/null | tail -1)"
+              echo "invocation: box validate  (skill psk1 owned by image pimage, with in-line content)"
+              set +e
+              OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1)
+              RC=$?
+              set -e
+              echo "exit: $RC"
+              echo "--- output ---"
+              echo "$OUT"
+            } > "$EV" 2>&1 || { cat "$EV"; exit 1; }
+            grep -q '^binary under test: ' "$EV" || { cat "$EV"; exit 1; }
+            grep -qE '^version: .*2026\.[0-9]{3}\.[0-9]{4}' "$EV" || { echo 'FAIL: the binary under test reports no CalVer version, so it is not a valid instrument (R9)'; cat "$EV"; exit 1; }
+            grep -q '^exit: 1$' "$EV" || { echo 'FAIL: an image-owned skill validated clean - the shape is not rejected (opencharly/sdk#434)'; cat "$EV"; exit 1; }
+            grep -q 'skill "psk1": owner "pimage" is an image, not a candy' "$EV" || { echo 'FAIL: the diagnostic does not name the node and the image owner'; cat "$EV"; exit 1; }
+            grep -q 'carrying `base:` or `from:`' "$EV" || { echo 'FAIL: the diagnostic does not say what makes the owner an image'; cat "$EV"; exit 1; }
+            grep -q 'no source directory' "$EV" || { echo 'FAIL: the diagnostic does not say an image has no source directory'; cat "$EV"; exit 1; }
+            grep -qF 'move this skill to a package candy that the image composes, and set `owner:` to that candy' "$EV" || { echo 'FAIL: the diagnostic does not name the FIX'; cat "$EV"; exit 1; }
+            grep -q 'opencharly/sdk#434' "$EV" || { echo 'FAIL: the diagnostic does not cite the ruling'; cat "$EV"; exit 1; }
+            grep -q 'no SKILL.md exists under' "$EV" && { echo 'FAIL: the diagnostic still claims a file search that never ran'; cat "$EV"; exit 1; }
+            # CONTROL: the ruling's own fix — the SAME skill owned by the package candy the image
+            # composes, with NO in-line content and its body beside that candy — must validate
+            # CLEAN. A second scratch project, so the control proves the fixed SHAPE *and* the
+            # body resolution the re-home relies on, not just that the first fixture was rewritten.
+            D2=$(mktemp -d)
+            trap 'rm -rf "$D" "$D2"' EXIT
+            mkdir -p "$D2/candy/pcandy/.agents/skills/psk1"
+            cat > "$D2/charly.yml" <<'PROJ2'
+            discover:
+                - path: candy
+                  recursive: true
+
+            pimage:
+                candy:
+                    base: docker.io/library/alpine:3.20
+                    candy:
+                        - pcandy
+                    plan:
+                        - check: fixture
+                          id: fixture-ok
+                          context:
+                            - build
+                          command: "true"
+
+            psk1:
+                skill:
+                    family: test
+                    owner: pcandy
+                    description: owned by the package candy the image composes - the ruled fix
+            PROJ2
+            cp "$D/candy/pcandy/charly.yml" "$D2/candy/pcandy/charly.yml"
+            cp "$D/candy/pcandy/.agents/skills/psk1/SKILL.md" "$D2/candy/pcandy/.agents/skills/psk1/SKILL.md"
+            {
+              echo "--- control: owner re-homed to the package candy pcandy, body beside it ---"
+              set +e
+              CTL=$("${CHARLY_BIN}" -C "$D2" box validate 2>&1)
+              CRC=$?
+              set -e
+              echo "exit: $CRC"
+              echo "$CTL"
+            } >> "$EV" 2>&1
+            grep -q '^exit: 0$' "$EV" || { echo 'FAIL: the ruled FIX (a package-candy owner) does not validate clean'; cat "$EV"; exit 1; }
+            if grep -q 'WARNING' "$EV" && grep 'WARNING' "$EV" | grep -qv 'dev/worktree build'; then
+              echo 'FAIL: a warning appeared that is not the known benign dev/worktree notice'; cat "$EV"; exit 1
+            fi
+            cat "$EV"
+            echo BOX-SKILL-IMAGE-OWNER-OK
+          in_container: false
