@@ -52,3 +52,80 @@ plugin-box:
               context:
                 - build
               command: "true"
+
+# ---------------------------------------------------------------------------
+# The `charly box …` VERB skills — authored beside the handlers they document.
+#
+# Each is a ROUTING-ONLY node: `name`/`family`/`owner` plus the `triggers:` that
+# generate its DISPATCHER.md row. The prose is the skill FILE at
+# `<repo root>/.agents/skills/<name>/SKILL.md`, never an inline `description:`
+# or `content:` — an inline body that disagrees with its file is a hard error in
+# the marketplace generator (`candy/plugin-marketplace/skillfile.go`), and
+# copying a body back into the node is how a skill drifts from its own file.
+#
+# `owner:` names THIS candy, because this candy IS the `command:*:box` provider
+# these skills document. It composes no image — it is listed in the charly
+# providers registry (`charly/charly/charly.yml`), never in a box's `candy:`
+# chain — so these nodes add no entry to any `ai.opencharly.skill` OCI label;
+# the bodies reach consumers through the generated marketplace corpus.
+# ---------------------------------------------------------------------------
+build-skill:
+    skill:
+        name: build
+        family: build
+        owner: plugin-box
+        triggers:
+            - "`charly box build` / `charly box generate` / Containerfile"
+generate-skill:
+    skill:
+        name: generate
+        family: build
+        owner: plugin-box
+        triggers:
+            - "`charly box build` / `charly box generate` / Containerfile"
+inspect-skill:
+    skill:
+        name: inspect
+        family: build
+        owner: plugin-box
+list-skill:
+    skill:
+        name: list
+        family: build
+        owner: plugin-box
+load-skill:
+    skill:
+        name: load
+        family: build
+        owner: plugin-box
+        triggers:
+            - "`charly box load` / delivering an image into a pod's NESTED podman store / nested-podman-socket / the container twin of `charly vm cp-box`"
+merge-skill:
+    skill:
+        name: merge
+        family: build
+        owner: plugin-box
+new-skill:
+    skill:
+        name: new
+        family: build
+        owner: plugin-box
+pull-skill:
+    skill:
+        name: pull
+        family: build
+        owner: plugin-box
+reconcile-skill:
+    skill:
+        name: reconcile
+        family: build
+        owner: plugin-box
+        triggers:
+            - "`charly box reconcile` / cross-repo `@github` pin alignment / candy-version-mismatch cleanup"
+validate-skill:
+    skill:
+        name: validate
+        family: build
+        owner: plugin-box
+        triggers:
+            - "`charly box validate` / schema error"
