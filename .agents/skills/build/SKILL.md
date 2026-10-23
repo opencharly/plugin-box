@@ -385,7 +385,11 @@ Three kinds of source changes are real cache invalidators — if you see a long 
 
 ## Build Flow Details
 
-**Internal base images** use exact CalVer tags in Containerfiles (`FROM ghcr.io/opencharly/fedora:2026.46.1415`), so each image names the precise version of its parent. **The builder does not resolve that tag through a local-image lookup**: BuildKit's OCI worker has no local-first resolution. The built image is stored in the configured RUN engine's store (`LoadExport`: load → tag → verify), where every later read of it — capability labels, deploy, status, inline merge, `charly clean` — resolves it; it is ALSO pushed to charly's local OCI registry, which the buildkitd mirrors `ghcr.io/opencharly` to, so a dependent box's `FROM ${BASE_IMAGE}` resolves a locally built base instead of the upstream registry (`opencharly/charly#937`, `opencharly/layer-charly-build#25`).
+**Internal base images** use exact CalVer tags in Containerfiles (`FROM ghcr.io/opencharly/fedora:2026.46.1415`), so each image names the precise version of its parent. **The builder does not resolve that tag through a local-image lookup**: BuildKit's OCI worker has no local-first resolution.
+
+Every build's export is NAMED — `io.containerd.image.name=<FullTag>` plus `org.opencontainers.image.created` on the manifest — and written to the **charly image store**, one engine-neutral OCI layout at `$XDG_DATA_HOME/charly/images` (`CHARLY_IMAGE_STORE_DIR` relocates it for a disposable target). The store is the build's canonical artefact, and it is what a dependent box's parent is solved from: when `ARG BASE_IMAGE=<ref>` names an image already in the store, the drive hands the store to the daemon as an `--oci-layout` and binds that ref to the parent's manifest digest as a named context, so the parent is read **from the store and not from the registry** (`opencharly/opencharly#481`). The registry remains the fallback when the parent is absent locally, and the buildkitd mirrors `ghcr.io/opencharly` to charly's local OCI registry, so any base the store does not hold resolves internally rather than against the upstream registry (`opencharly/charly#937`).
+
+The image is then materialised into the configured RUN engine's store with a plain `load` — **no `tag` step**: the naming annotation is what applies the reference, and the drive verifies the reference resolves before the build is reported successful. Every later read of it — capability labels, deploy, status, inline merge, `charly clean` — resolves it through that engine.
 
 ## Push Mode
 
