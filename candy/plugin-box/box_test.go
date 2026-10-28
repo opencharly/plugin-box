@@ -150,7 +150,7 @@ func TestBuildGrammar_Parse(t *testing.T) {
 		"jupyter", "arch-builder",
 		"--push", "--tag", "2026.100.0000", "--platform", "linux/amd64",
 		"--cache", "registry", "--no-cache",
-		"--jobs", "8", "--podman-jobs", "2",
+		"--jobs", "8", "--stage-parallelism", "2",
 		"--include-disabled", "--dev-local-pkg",
 	}
 	if _, err := parseLeaf("build", &g, args); err != nil {
@@ -233,12 +233,12 @@ func TestAcquireBuildActivityLock_WritesContentAndReleases(t *testing.T) {
 }
 
 // TestBuildGrammar_JobsEnvBindings verifies the Kong env bindings on the build parallelism +
-// cache flags — CHARLY_BUILD_JOBS → Jobs, CHARLY_PODMAN_JOBS → StageParallelism, CHARLY_BUILD_CACHE →
-// Cache. Moved from charly/build_jobs_test.go (P8b — the former core BuildCmd is DELETED; the env
-// bindings now live on this grammar), so the bindings can't silently regress.
+// cache flags — CHARLY_BUILD_JOBS → Jobs, CHARLY_STAGE_PARALLELISM → StageParallelism,
+// CHARLY_BUILD_CACHE → Cache. Moved from charly/build_jobs_test.go (P8b — the former core BuildCmd
+// is DELETED; the env bindings now live on this grammar), so the bindings can't silently regress.
 func TestBuildGrammar_JobsEnvBindings(t *testing.T) {
 	t.Setenv("CHARLY_BUILD_JOBS", "6")
-	t.Setenv("CHARLY_PODMAN_JOBS", "9")
+	t.Setenv("CHARLY_STAGE_PARALLELISM", "9")
 	t.Setenv("CHARLY_BUILD_CACHE", "registry")
 
 	var cli struct {
@@ -255,7 +255,7 @@ func TestBuildGrammar_JobsEnvBindings(t *testing.T) {
 		t.Errorf("Jobs from CHARLY_BUILD_JOBS = %d, want 6", cli.Build.Jobs)
 	}
 	if cli.Build.StageParallelism != 9 {
-		t.Errorf("StageParallelism from CHARLY_PODMAN_JOBS = %d, want 9", cli.Build.StageParallelism)
+		t.Errorf("StageParallelism from CHARLY_STAGE_PARALLELISM = %d, want 9", cli.Build.StageParallelism)
 	}
 	if cli.Build.Cache != "registry" {
 		t.Errorf("Cache from CHARLY_BUILD_CACHE = %q, want registry", cli.Build.Cache)

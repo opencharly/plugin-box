@@ -224,12 +224,20 @@ func dispatchPull(hc *hostClient, args []string) error {
 
 // --- box build ---
 
-// buildGrammar is the `charly box build [boxes…] [flags]` CLI surface — byte-identical to the
-// former static core build leaf (P8b relocated its Run body into dispatchBuild): same positional,
-// same nine flags (including the three env-var-backed tunables), same help text, so
-// `charly box build --help` renders unchanged and CHARLY_BUILD_CACHE/CHARLY_BUILD_JOBS/
-// CHARLY_PODMAN_JOBS keep working — Kong resolves them in-plugin at parse time and dispatchBuild
-// threads the resolved values into the spec.BuildRequest it invokes build:box with.
+// buildGrammar is the `charly box build [boxes…] [flags]` CLI surface — the former static core
+// build leaf (P8b relocated its Run body into dispatchBuild): same positional, same nine flags
+// (including the three env-var-backed tunables). Kong resolves the env bindings in-plugin at parse
+// time and dispatchBuild threads the resolved values into the spec.BuildRequest it invokes
+// build:box with.
+//
+// ONE flag's SPELLING changed, deliberately: the inner-concurrency flag is `--stage-parallelism` /
+// `CHARLY_STAGE_PARALLELISM`, not `--podman-jobs` / `CHARLY_PODMAN_JOBS`. The CONTRACT renamed that
+// knob `podman_jobs` → `stage_parallelism` (spec/schema/buildwire.cue, sdk/buildkit.
+// ResolveStageParallelism) and the builder is BuildKit — the value drives the daemon's
+// `[worker.oci] max-parallelism`, not `podman build --jobs N` — so the retired driver's name was the
+// one false word left on the surface (the flag's own help read "Stages per podman build"). The
+// published build skill, the generated docs recipe and the contract all name the contract's
+// spelling, and a command that fails AT THE FLAG is the defect (opencharly/plugin-box#65).
 type buildGrammar struct {
 	Boxes            []string `arg:"" optional:"" help:"Boxes to build (default: all enabled; the sentinel 'all' is equivalent). Supports remote refs (github.com/org/repo/box[@version])"`
 	Push             bool     `name:"push" help:"Push to registry after building"`
@@ -238,7 +246,7 @@ type buildGrammar struct {
 	Cache            string   `name:"cache" help:"Build cache type: registry, image, gha, none (default: auto)" env:"CHARLY_BUILD_CACHE"`
 	NoCache          bool     `name:"no-cache" help:"Disable build cache entirely"`
 	Jobs             int      `name:"jobs" help:"Max concurrent image builds per DAG level (0=auto: defaults.jobs, else 4)" env:"CHARLY_BUILD_JOBS"`
-	StageParallelism int      `name:"podman-jobs" help:"Stages per podman build (0=auto: min(NCPU, defaults.stage_parallelism_cap))" env:"CHARLY_PODMAN_JOBS"`
+	StageParallelism int      `name:"stage-parallelism" help:"Stages per build (0=auto: min(NCPU, defaults.stage_parallelism_cap))" env:"CHARLY_STAGE_PARALLELISM"`
 	IncludeDisabled  bool     `name:"include-disabled" help:"Build boxes with enabled: false in charly.yml (does not modify the file). Use for one-off operational rebuilds without flipping authored config."`
 	DevLocalPkg      bool     `name:"dev-local-pkg" help:"Build localpkg candies (the charly toolchain) from LOCAL in-development source instead of downloading the published release. Set automatically for disposable check-bed image builds so a bed tests in-development code; never on a production box build."`
 }

@@ -28,7 +28,6 @@ recommendation pointing here.
 | Pull fully-qualified ref | `charly box pull ghcr.io/opencharly/jupyter:2026.108.56` | Pulls as-is, works from anywhere |
 | Pull remote project ref | `charly box pull @github.com/org/repo/image:v1` | Downloads repo, reads its `charly.yml`, pulls registry ref |
 | Override tag (short name) | `charly box pull jupyter --tag 2026.108.1` | Pull a specific CalVer tag |
-| Override platform | `charly box pull jupyter --platform linux/arm64` | Pull a specific platform |
 
 ## Three Input Forms
 
@@ -129,8 +128,6 @@ Use `charly box pull <image>` once to seed local storage; use `charly update
 - `--tag <tag>` (default: `latest`) — Image tag when resolving a short
   name. Ignored for fully-qualified or remote-project refs (the tag is
   embedded in the ref).
-- `--platform <platform>` — Target platform (default: host). Passed to
-  `podman pull --platform`.
 
 ## Typical Workflows
 
