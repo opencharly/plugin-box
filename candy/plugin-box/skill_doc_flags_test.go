@@ -296,6 +296,14 @@ func flagSectionBullets(body []string) []docClaim {
 	return out
 }
 
+// skillDocIsVacuous reports whether a body makes NO usage claim for the command it documents —
+// the state in which the control compares nothing in that body, so every assertion about it
+// passes by default. The rule lives in a function so that the guard has its own RED ARM: a
+// control that cannot fail is not coverage.
+func skillDocIsVacuous(body []string, command string) bool {
+	return len(usageClaims(body, command)) == 0
+}
+
 // TestSkillBodiesDocumentOnlyRealFlags is the control. Every flag the body offers for its own
 // command must be a flag the command accepts, and every environment variable it pairs with one of
 // its flags must be one of the command's own bindings.
@@ -322,7 +330,7 @@ func TestSkillBodiesDocumentOnlyRealFlags(t *testing.T) {
 			flags, envs := kongSurface(t, tc.grammar)
 
 			claims := usageClaims(body, tc.command)
-			if len(claims) == 0 {
+			if skillDocIsVacuous(body, tc.command) {
 				// A body that never invokes its own command is read by NOTHING here: the usage
 				// claims are what tie a flag in the prose to this command's grammar, and a body
 				// with none of them passes every assertion below without being compared to
@@ -421,5 +429,35 @@ func TestSkillDocCoverageIsEffective(t *testing.T) {
 	}
 	if !slices.Contains(stale, "absent") {
 		t.Fatalf("the coverage check did not report the stale case: %v", stale)
+	}
+}
+
+// TestSkillDocVacuityIsEffective is the VACUITY GUARD's RED ARM: the guard must fire on a body
+// that never invokes the command it documents, and stay silent on a body that does. The guard is
+// what stops a case from passing by comparing nothing, so a guard that cannot fire would leave
+// the control's silence indistinguishable from its agreement.
+func TestSkillDocVacuityIsEffective(t *testing.T) {
+	neverInvokes := []string{
+		"# The command",
+		"",
+		"The command is described in prose, never run.",
+		"",
+		"```",
+		"charly box other --flag",
+		"```",
+	}
+	if !skillDocIsVacuous(neverInvokes, "charly box build") {
+		t.Fatal("the vacuity guard did not fire on a body that never invokes the command it documents")
+	}
+
+	invokes := []string{
+		"# The command",
+		"",
+		"```",
+		"charly box build --flag",
+		"```",
+	}
+	if skillDocIsVacuous(invokes, "charly box build") {
+		t.Fatal("the vacuity guard fired on a body that DOES invoke the command it documents")
 	}
 }
