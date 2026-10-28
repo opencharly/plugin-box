@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,6 +25,13 @@ import (
 // that the surface the body presents for its OWN command is one this plugin's Kong grammar
 // actually defines. Kong is the authority, not a hand-written list: the flag names and the env
 // bindings come from the grammar structs themselves, so the surface cannot drift.
+//
+// The SET of bodies it reads is read from the tree too, because a body the control does not read is
+// a body the control cannot check. A hand-kept list of them is a list that drifts the moment a body
+// is added, and the drift is invisible: the control stays green over a body it has never seen
+// (opencharly/plugin-box#67). So the TREE names the bodies and the cases name what each one
+// documents, and the control asserts BOTH directions — every body in the tree has a case, every case
+// names a body that exists — and that no body is read vacuously.
 //
 // It is a Go test rather than a prose review because a prose review cannot fail, and a control that
 // cannot fail is not coverage (R7).
@@ -88,6 +96,56 @@ var skillDocCases = []skillDocCase{
 	{skill: "reconcile", command: "charly box reconcile", grammar: &reconcileGrammar{}},
 	{skill: "new", command: "charly box new", grammar: &newGrammar{}},
 	{skill: "list", command: "charly box list", grammar: nil},
+}
+
+// skillsRoot is the tree the bodies live in — the SAME path the corpus generator reads them from.
+const skillsRoot = "../../.agents/skills"
+
+// skillBodyNames returns the names of the skill bodies in the tree: every directory under root that
+// holds a SKILL.md. The set is READ, never listed: a list of bodies is a list that is one body
+// short the moment a body is added, and the control that reads a list cannot see the body it does
+// not read.
+func skillBodyNames(root string) ([]string, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, e.Name(), "SKILL.md")); err != nil {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	return names, nil
+}
+
+// skillDocCoverage compares the bodies in the tree with the cases the control reads, and returns
+// the bodies NO case covers and the cases that name NO body. Both directions are findings: an
+// uncovered body is read by nothing, and a stale case asserts about a body that is not there.
+func skillDocCoverage(root string, cases []skillDocCase) (uncovered, stale []string, err error) {
+	bodies, err := skillBodyNames(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	covered := make(map[string]bool, len(cases))
+	for _, tc := range cases {
+		covered[tc.skill] = true
+	}
+	for _, name := range bodies {
+		if !covered[name] {
+			uncovered = append(uncovered, name)
+		}
+	}
+	for _, tc := range cases {
+		if !slices.Contains(bodies, tc.skill) {
+			stale = append(stale, tc.skill)
+		}
+	}
+	return uncovered, stale, nil
 }
 
 // kongSurface returns the flag names and env bindings a Kong grammar defines. It walks Kong's own
@@ -242,9 +300,20 @@ func flagSectionBullets(body []string) []docClaim {
 // command must be a flag the command accepts, and every environment variable it pairs with one of
 // its flags must be one of the command's own bindings.
 func TestSkillBodiesDocumentOnlyRealFlags(t *testing.T) {
+	uncovered, stale, err := skillDocCoverage(skillsRoot, skillDocCases)
+	if err != nil {
+		t.Fatalf("read %s: %v", skillsRoot, err)
+	}
+	for _, name := range uncovered {
+		t.Errorf("the skill body %s is not covered: add its command and grammar to skillDocCases, or the control reads nothing in it", name)
+	}
+	for _, name := range stale {
+		t.Errorf("skillDocCases names %s, which is no skill body in %s", name, skillsRoot)
+	}
+
 	for _, tc := range skillDocCases {
 		t.Run(tc.skill, func(t *testing.T) {
-			path := filepath.Join("..", "..", ".agents", "skills", tc.skill, "SKILL.md")
+			path := filepath.Join(skillsRoot, tc.skill, "SKILL.md")
 			raw, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("read %s: %v", path, err)
@@ -252,7 +321,16 @@ func TestSkillBodiesDocumentOnlyRealFlags(t *testing.T) {
 			body := strings.Split(string(raw), "\n")
 			flags, envs := kongSurface(t, tc.grammar)
 
-			for _, claim := range usageClaims(body, tc.command) {
+			claims := usageClaims(body, tc.command)
+			if len(claims) == 0 {
+				// A body that never invokes its own command is read by NOTHING here: the usage
+				// claims are what tie a flag in the prose to this command's grammar, and a body
+				// with none of them passes every assertion below without being compared to
+				// anything. A control that reads nothing is not coverage.
+				t.Errorf("%s: the body makes no usage claim for %s, so the control compares nothing in it", path, tc.command)
+			}
+
+			for _, claim := range claims {
 				for _, m := range flagToken.FindAllString(claim.text, -1) {
 					name := strings.TrimPrefix(m, "--")
 					if !flags[name] {
@@ -299,5 +377,49 @@ func TestSkillBodiesDocumentOnlyRealFlags(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSkillDocCoverageIsEffective is the coverage check's own RED ARM: it must fail on a body no
+// case covers, and on a case that names no body. A coverage check that cannot fail proves nothing,
+// and a coverage check that cannot fail is the defect this control exists to catch wearing a
+// different hat — the control reads a set, and a set that is never compared with the tree is a set
+// that drifts.
+func TestSkillDocCoverageIsEffective(t *testing.T) {
+	root := t.TempDir()
+	body := filepath.Join(root, "extra")
+	if err := os.MkdirAll(body, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", body, err)
+	}
+	if err := os.WriteFile(filepath.Join(body, "SKILL.md"), []byte("---\nname: extra\ndescription: a body no case covers\n---\n"), 0o644); err != nil {
+		t.Fatalf("write the body: %v", err)
+	}
+
+	cases := []skillDocCase{{skill: "extra", command: "charly box extra"}}
+	uncovered, stale, err := skillDocCoverage(root, cases)
+	if err != nil {
+		t.Fatalf("coverage: %v", err)
+	}
+	if len(uncovered) != 0 || len(stale) != 0 {
+		t.Fatalf("the covered tree reported uncovered=%v stale=%v", uncovered, stale)
+	}
+
+	// The case is dropped: the body in the tree is read by nothing, and the check must say so.
+	uncovered, stale, err = skillDocCoverage(root, nil)
+	if err != nil {
+		t.Fatalf("coverage: %v", err)
+	}
+	if !slices.Contains(uncovered, "extra") {
+		t.Fatalf("the coverage check did not report the uncovered body: %v", uncovered)
+	}
+
+	// A case names a body that is not there: the check must say that too.
+	cases = append(cases, skillDocCase{skill: "absent", command: "charly box absent"})
+	uncovered, stale, err = skillDocCoverage(root, cases)
+	if err != nil {
+		t.Fatalf("coverage: %v", err)
+	}
+	if !slices.Contains(stale, "absent") {
+		t.Fatalf("the coverage check did not report the stale case: %v", stale)
 	}
 }
