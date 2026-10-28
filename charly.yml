@@ -454,6 +454,12 @@ check-box-local:
       # (`base:` / `from:`) may not own a `skill:`. The node is re-homed onto a package
       # candy the image composes, and until it is, validate must say so LOUDLY and name
       # that fix. This is the product-boundary witness for validateSkillOwners.
+      #
+      # The control's body lives at the OWNING CANDY'S REPO ROOT, which for a candy inside
+      # a project is the PROJECT ROOT — the layout every real skill owner uses (the candy
+      # sits under `candy/`, its `.agents/skills/` at the repo root). The sdk's body
+      # lookup resolves that root from the candy's source dir (deploykit/skills_collect.go
+      # → candyRepoRoot) and looks there; it did NOT look beside the candy.
       # ---------------------------------------------------------------------------
       - check: >-
           an IMAGE candy owning a `skill:` is REJECTED with the ruling's message — it names
@@ -462,8 +468,9 @@ check-box-local:
           fixture carries an IN-LINE `content:`, which is the arm that validated CLEAN
           (exit 0) before the rule: the shape is what is forbidden, not the missing body,
           so this step FAILS on the pre-fix engine. Its control — the SAME skill re-owned
-          by the package candy the image composes, with its body beside that candy — must
-          validate clean, so the step cannot pass by rejecting everything.
+          by the package candy the image composes, with its body at that candy's REPO ROOT
+          (the project root here, where every real skill owner keeps `.agents/skills/`) —
+          must validate clean, so the step cannot pass by rejecting everything.
         id: box-skill-image-owner
         exit_status: 0
         stdout:
@@ -477,7 +484,7 @@ check-box-local:
             mkdir -p "$(dirname "$EV")"
             D=$(mktemp -d)
             trap 'rm -rf "$D"' EXIT
-            mkdir -p "$D/candy/pcandy/.agents/skills/psk1"
+            mkdir -p "$D/candy/pcandy"
             cat > "$D/charly.yml" <<'PROJ'
             discover:
                 - path: candy
@@ -515,8 +522,6 @@ check-box-local:
                           exit_status: 0
                           command: "true"
             CANDY
-            printf -- '---\nname: psk1\ndescription: package-candy-owned skill\n---\n\nBody prose owned by the package candy.\n' \
-              > "$D/candy/pcandy/.agents/skills/psk1/SKILL.md"
             {
               echo "binary under test: ${CHARLY_BIN}"
               echo "version: $("${CHARLY_BIN}" version 2>/dev/null | tail -1)"
@@ -539,12 +544,16 @@ check-box-local:
             grep -q 'opencharly/sdk#434' "$EV" || { echo 'FAIL: the diagnostic does not cite the ruling'; cat "$EV"; exit 1; }
             grep -q 'no SKILL.md exists under' "$EV" && { echo 'FAIL: the diagnostic still claims a file search that never ran'; cat "$EV"; exit 1; }
             # CONTROL: the ruling's own fix — the SAME skill owned by the package candy the image
-            # composes, with NO in-line content and its body beside that candy — must validate
-            # CLEAN. A second scratch project, so the control proves the fixed SHAPE *and* the
-            # body resolution the re-home relies on, not just that the first fixture was rewritten.
+            # composes, with NO in-line content and its body at that candy's REPO ROOT — must
+            # validate CLEAN. A second scratch project, so the control proves the fixed SHAPE *and*
+            # the body resolution the re-home relies on, not just that the first fixture was
+            # rewritten. The body goes to the PROJECT ROOT because that is the owning candy's
+            # repo root (sdk/deploykit/skills_collect.go → candyRepoRoot), and it is the layout
+            # every real skill owner uses: the candy under `candy/`, its `.agents/skills/` at the
+            # repo root. Beside the candy is NOT where the lookup looks.
             D2=$(mktemp -d)
             trap 'rm -rf "$D" "$D2"' EXIT
-            mkdir -p "$D2/candy/pcandy/.agents/skills/psk1"
+            mkdir -p "$D2/candy/pcandy" "$D2/.agents/skills/psk1"
             cat > "$D2/charly.yml" <<'PROJ2'
             discover:
                 - path: candy
@@ -569,9 +578,10 @@ check-box-local:
                     description: owned by the package candy the image composes - the ruled fix
             PROJ2
             cp "$D/candy/pcandy/charly.yml" "$D2/candy/pcandy/charly.yml"
-            cp "$D/candy/pcandy/.agents/skills/psk1/SKILL.md" "$D2/candy/pcandy/.agents/skills/psk1/SKILL.md"
+            printf -- '---\nname: psk1\ndescription: package-candy-owned skill\n---\n\nBody prose owned by the package candy.\n' \
+              > "$D2/.agents/skills/psk1/SKILL.md"
             {
-              echo "--- control: owner re-homed to the package candy pcandy, body beside it ---"
+              echo "--- control: owner re-homed to the package candy pcandy, body at that candy's repo root ---"
               set +e
               CTL=$("${CHARLY_BIN}" -C "$D2" box validate 2>&1)
               CRC=$?
