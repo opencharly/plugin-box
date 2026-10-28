@@ -296,12 +296,16 @@ func flagSectionBullets(body []string) []docClaim {
 	return out
 }
 
-// skillDocIsVacuous reports whether a body makes NO usage claim for the command it documents —
-// the state in which the control compares nothing in that body, so every assertion about it
-// passes by default. The rule lives in a function so that the guard has its own RED ARM: a
-// control that cannot fail is not coverage.
-func skillDocIsVacuous(body []string, command string) bool {
-	return len(usageClaims(body, command)) == 0
+// skillDocIsVacuous reports whether a body's usage claims for the command it documents are
+// EMPTY — the state in which the control compares nothing in that body, so every assertion
+// about it passes by default. The rule lives in a function so that the guard has its own RED
+// ARM: a control that cannot fail is not coverage.
+//
+// It takes the CLAIMS, not the body: the control needs those claims for the loop below, so
+// they are computed ONCE and handed to both the guard and the loop. A body-and-command
+// signature would recompute them here — the same claims, read twice, for one decision.
+func skillDocIsVacuous(claims []docClaim) bool {
+	return len(claims) == 0
 }
 
 // TestSkillBodiesDocumentOnlyRealFlags is the control. Every flag the body offers for its own
@@ -330,7 +334,7 @@ func TestSkillBodiesDocumentOnlyRealFlags(t *testing.T) {
 			flags, envs := kongSurface(t, tc.grammar)
 
 			claims := usageClaims(body, tc.command)
-			if skillDocIsVacuous(body, tc.command) {
+			if skillDocIsVacuous(claims) {
 				// A body that never invokes its own command is read by NOTHING here: the usage
 				// claims are what tie a flag in the prose to this command's grammar, and a body
 				// with none of them passes every assertion below without being compared to
@@ -446,7 +450,7 @@ func TestSkillDocVacuityIsEffective(t *testing.T) {
 		"charly box other --flag",
 		"```",
 	}
-	if !skillDocIsVacuous(neverInvokes, "charly box build") {
+	if !skillDocIsVacuous(usageClaims(neverInvokes, "charly box build")) {
 		t.Fatal("the vacuity guard did not fire on a body that never invokes the command it documents")
 	}
 
@@ -457,7 +461,7 @@ func TestSkillDocVacuityIsEffective(t *testing.T) {
 		"charly box build --flag",
 		"```",
 	}
-	if skillDocIsVacuous(invokes, "charly box build") {
+	if skillDocIsVacuous(usageClaims(invokes, "charly box build")) {
 		t.Fatal("the vacuity guard fired on a body that DOES invoke the command it documents")
 	}
 }
