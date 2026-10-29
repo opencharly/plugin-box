@@ -21,7 +21,13 @@ func validateSkills(cfg *spec.Config, dk map[string]deploykit.CandyModel, e *vEr
 }
 
 // validateSkillBodies reports every authored `skill:` node whose body does not resolve at
-// <owning candy SourceDir>/.agents/skills/<name>/SKILL.md.
+// <the owning candy's REPO ROOT>/.agents/skills/<name>/SKILL.md.
+//
+// The base is the REPO ROOT — the directory a harness rooted at that repo discovers natively —
+// and NOT the candy's own directory. The two coincide only for a root-level standalone candy;
+// for a candy under `candy/<name>/` they diverge, and the sdk derives the root structurally
+// (deploykit/candy_repo_root.go → candyRepoRoot) so a repository cannot be "found" by the
+// presence of an .agents tree. One base, one layout, two readers.
 //
 // It exists because CollectSkills reads a body only for skills whose owner is in a composed box chain
 // — a LABEL-SIZE policy, not a statement about whether a body must exist. A repo that authors skill
