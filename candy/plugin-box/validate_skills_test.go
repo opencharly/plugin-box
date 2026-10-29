@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/opencharly/sdk/deploykit"
@@ -13,6 +14,13 @@ import (
 // validate_skills_test.go — both controls for validateSkillBodies. The tree is identical in each case;
 // only the body's location differs. The pre-change code (which called only CollectSkills) reported
 // nothing for either, because composition gates the read.
+//
+// THE BASE, AND WHY THESE ASSERTIONS ARE A FLOOR GUARD. The body resolves at the OWNING CANDY'S
+// REPO ROOT (deploykit/candy_repo_root.go → candyRepoRoot), not at the candy's own directory —
+// the two coincide only for a root-level standalone candy. This file compiles against the sdk
+// version THIS repo declares, so these assertions hold only while that declaration is at least the
+// version the org's build compiles; lowering it turns them RED again, which is exactly what they
+// are for (opencharly/plugin-box#73).
 
 func skillBodiesCfg(t *testing.T, atRoot bool) (*spec.Config, map[string]deploykit.CandyModel) {
 	t.Helper()
@@ -42,23 +50,32 @@ func skillBodiesCfg(t *testing.T, atRoot bool) (*spec.Config, map[string]deployk
 	return cfg, dk
 }
 
-func TestValidateSkillBodies_BesideTheCandyIsClean(t *testing.T) {
+// TestValidateSkillBodies_BesideTheCandyIsReported is the negative arm of the base: the body sits
+// BESIDE the candy — the placement the lookup does NOT read — so it must be reported, and the
+// diagnostic must name the repo root it looked in. The wording is pinned because the diagnostic IS
+// the remediation: an author who reads it learns which tree to put the body in.
+func TestValidateSkillBodies_BesideTheCandyIsReported(t *testing.T) {
 	cfg, dk := skillBodiesCfg(t, false)
 	e := &vErr{}
 	validateSkillBodies(cfg, dk, e)
-	if len(e.msgs) != 0 {
-		t.Fatalf("body beside the candy must be clean, got %v", e.msgs)
+	if len(e.msgs) == 0 {
+		t.Fatal("a body beside the candy must be reported — the loader reads the owning candy's REPO ROOT, not the candy's own directory")
 	}
+	if !strings.Contains(e.msgs[0], "exists at the repo root of the owning candy") {
+		t.Fatalf("the diagnostic must name the repo root it looked in, got %q", e.msgs[0])
+	}
+	t.Logf("reported: %v", e.msgs)
 }
 
-func TestValidateSkillBodies_AtTheRepoRootIsReported(t *testing.T) {
+// TestValidateSkillBodies_AtTheRepoRootIsClean is the positive arm of the base: the body at the
+// owning candy's REPO ROOT — the layout every real skill owner uses — resolves, so it is clean.
+func TestValidateSkillBodies_AtTheRepoRootIsClean(t *testing.T) {
 	cfg, dk := skillBodiesCfg(t, true)
 	e := &vErr{}
 	validateSkillBodies(cfg, dk, e)
-	if len(e.msgs) == 0 {
-		t.Fatal("body at the repo root must be reported — the loader reads beside the candy, not at the root")
+	if len(e.msgs) != 0 {
+		t.Fatalf("a body at the owning candy's repo root must be clean, got %v", e.msgs)
 	}
-	t.Logf("reported: %v", e.msgs)
 }
 
 func TestValidateSkillBodies_NilConfigIsSilent(t *testing.T) {
@@ -162,7 +179,7 @@ func TestValidateSkills_ImageAndCandySameNameKeepsTheCandy(t *testing.T) {
 // TestValidateSkills_PackageCandyOwnerStaysClean is the second anti-over-rejection control: the shape
 // this rule DEMANDS (a package candy the image composes) must validate clean.
 func TestValidateSkills_PackageCandyOwnerStaysClean(t *testing.T) {
-	cfg, dk := skillBodiesCfg(t, false) // owner `plugin-review` is a candy with its body beside it
+	cfg, dk := skillBodiesCfg(t, true) // owner `plugin-review` is a candy with its body at its repo root
 	e := &vErr{}
 	validateSkills(cfg, dk, e)
 	if len(e.msgs) != 0 {

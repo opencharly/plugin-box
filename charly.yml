@@ -458,8 +458,9 @@ check-box-local:
       # The control's body lives at the OWNING CANDY'S REPO ROOT, which for a candy inside
       # a project is the PROJECT ROOT — the layout every real skill owner uses (the candy
       # sits under `candy/`, its `.agents/skills/` at the repo root). The sdk's body
-      # lookup resolves that root from the candy's source dir (deploykit/skills_collect.go
-      # → candyRepoRoot) and looks there; it did NOT look beside the candy. MEASURED on
+      # lookup resolves that root STRUCTURALLY from the candy's source dir
+      # (deploykit/candy_repo_root.go → candyRepoRoot: `<repo>/candy/<name>` → `<repo>`)
+      # and looks there; it does NOT look beside the candy. MEASURED on
       # this tree: the SAME project with the body BESIDE the candy is REFUSED — "no
       # .agents/skills/psk1/SKILL.md exists at the repo root of the owning candy" — and
       # with the body at the project root it validates clean. The arm at the end of this
@@ -559,7 +560,7 @@ check-box-local:
             # validate CLEAN. A second scratch project, so the control proves the fixed SHAPE *and*
             # the body resolution the re-home relies on, not just that the first fixture was
             # rewritten. The body goes to the PROJECT ROOT because that is the owning candy's
-            # repo root (sdk/deploykit/skills_collect.go → candyRepoRoot), and it is the layout
+            # repo root (sdk/deploykit/candy_repo_root.go → candyRepoRoot), and it is the layout
             # every real skill owner uses: the candy under `candy/`, its `.agents/skills/` at the
             # repo root. Beside the candy is NOT where the lookup looks.
             D2=$(mktemp -d)
