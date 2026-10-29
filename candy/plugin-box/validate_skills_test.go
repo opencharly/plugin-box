@@ -54,12 +54,16 @@ func skillBodiesCfg(t *testing.T, atRoot bool) (*spec.Config, map[string]deployk
 // BESIDE the candy — the placement the lookup does NOT read — so it must be reported, and the
 // diagnostic must name the repo root it looked in. The wording is pinned because the diagnostic IS
 // the remediation: an author who reads it learns which tree to put the body in.
+//
+// EXACTLY ONE finding, not "at least one": a count that is not asserted cannot fail, and a
+// loader that reported the same body twice would slip past a "did it report at all?" check while
+// the author sees a duplicated finding. The count is part of the contract this arm pins.
 func TestValidateSkillBodies_BesideTheCandyIsReported(t *testing.T) {
 	cfg, dk := skillBodiesCfg(t, false)
 	e := &vErr{}
 	validateSkillBodies(cfg, dk, e)
-	if len(e.msgs) == 0 {
-		t.Fatal("a body beside the candy must be reported — the loader reads the owning candy's REPO ROOT, not the candy's own directory")
+	if len(e.msgs) != 1 {
+		t.Fatalf("a body beside the candy must be reported as EXACTLY ONE finding — the loader reads the owning candy's REPO ROOT, not the candy's own directory; got %d finding(s): %v", len(e.msgs), e.msgs)
 	}
 	if !strings.Contains(e.msgs[0], "exists at the repo root of the owning candy") {
 		t.Fatalf("the diagnostic must name the repo root it looked in, got %q", e.msgs[0])
