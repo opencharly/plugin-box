@@ -56,12 +56,15 @@ plugin-box:
 # ---------------------------------------------------------------------------
 # The `charly box …` VERB skills — authored beside the handlers they document.
 #
-# Each is a ROUTING-ONLY node: `name`/`family`/`owner` plus the `triggers:` that
-# generate its DISPATCHER.md row. The prose is the skill FILE at
-# `<repo root>/.agents/skills/<name>/SKILL.md`, never an inline `description:`
-# or `content:` — an inline body that disagrees with its file is a hard error in
-# the marketplace generator (`candy/plugin-marketplace/skillfile.go`), and
-# copying a body back into the node is how a skill drifts from its own file.
+# Each is a ROUTING-ONLY node: `name`/`family`/`owner`, plus the `triggers:` that
+# generate its DISPATCHER.md row WHERE THE SKILL IS ROUTED. Measured on these ten:
+# five carry triggers (`build`, `generate`, `load`, `reconcile`, `validate`) and five
+# carry none (`inspect`, `list`, `merge`, `new`, `pull`), so those five generate no
+# row and this move adds and removes none for them. The prose is the skill FILE at
+# `<repo root>/.agents/skills/<name>/SKILL.md`, never an inline `description:` or
+# `content:` — an inline body that disagrees with its file is a hard error in the
+# marketplace generator (`candy/plugin-marketplace/skillfile.go`), and copying a
+# body back into the node is how a skill drifts from its own file.
 #
 # `owner:` names THIS candy, because this candy IS the `command:*:box` provider
 # these skills document. It composes no image — it is listed in the charly
