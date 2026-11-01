@@ -156,13 +156,18 @@ type validateGrammar struct {
 
 // --- box pull ---
 
-// pullGrammar is the `charly box pull <box> [--tag] [--platform]` CLI surface — byte-identical to
-// the former static BoxPullCmd Kong leaf (FINAL/K5 unit 6a M4c): same positional, same two flags,
-// same help text, so `charly box pull --help` renders unchanged.
+// pullGrammar is the `charly box pull <box> [--tag]` CLI surface — byte-identical to the former
+// static BoxPullCmd Kong leaf (FINAL/K5 unit 6a M4c): same positional, same help text, so
+// `charly box pull --help` renders unchanged.
+//
+// `--platform` was DELETED (opencharly/plugin-box#40), not implemented: the flag was parsed and
+// never read — `dispatchPull` invokes the compiled-in `build:ensure` word and threads no platform —
+// so it advertised a capability that did not exist. Platform selection lives where it is real: a
+// plugin artifact's descriptor selection (sdk/artifactkit) and the registry consumption legs, and
+// for an IMAGE pull it belongs to the engine/drive interface, never a charly flag.
 type pullGrammar struct {
-	Box      string `arg:"" help:"Box name (short, resolved via charly.yml), fully-qualified ref, or @github.com/org/repo/box[:version]"`
-	Tag      string `name:"tag" help:"Image CalVer tag when resolving a short name (empty = resolve from charly.yml metadata or error with explicit guidance)"`
-	Platform string `name:"platform" help:"Target platform (default: host)"`
+	Box string `arg:"" help:"Box name (short, resolved via charly.yml), fully-qualified ref, or @github.com/org/repo/box[:version]"`
+	Tag string `name:"tag" help:"Image CalVer tag when resolving a short name (empty = resolve from charly.yml metadata or error with explicit guidance)"`
 }
 
 // dispatchPull ensures an image is present in local storage by INVOKING the peer COMPILED-IN
@@ -176,8 +181,9 @@ type pullGrammar struct {
 // so build:ensure's pull/build-fallback picks up the requested tag — byte-identical to the former
 // core Run's `buildkit.ResolveBox(cfg,box,tag).Registry/.Name` → ResolveShellImageRef path, but off
 // the envelope (registry/name are tag-independent), so no loader is needed plugin-side. A
-// full/remote ref already carries its own tag. --platform stays a no-op (the former Run never
-// threaded it to the ensure drive either).
+// full/remote ref already carries its own tag. There is no platform knob: the former Run never
+// threaded one to the ensure drive either, and the flag that pretended otherwise is deleted
+// (opencharly/plugin-box#40) rather than left as a no-op spelling.
 func dispatchPull(hc *hostClient, args []string) error {
 	var g pullGrammar
 	if done, err := parseLeaf("pull", &g, args); err != nil || done {
@@ -218,23 +224,31 @@ func dispatchPull(hc *hostClient, args []string) error {
 
 // --- box build ---
 
-// buildGrammar is the `charly box build [boxes…] [flags]` CLI surface — byte-identical to the
-// former static core build leaf (P8b relocated its Run body into dispatchBuild): same positional,
-// same nine flags (including the three env-var-backed tunables), same help text, so
-// `charly box build --help` renders unchanged and CHARLY_BUILD_CACHE/CHARLY_BUILD_JOBS/
-// CHARLY_PODMAN_JOBS keep working — Kong resolves them in-plugin at parse time and dispatchBuild
-// threads the resolved values into the spec.BuildRequest it invokes build:box with.
+// buildGrammar is the `charly box build [boxes…] [flags]` CLI surface — the former static core
+// build leaf (P8b relocated its Run body into dispatchBuild): same positional, same nine flags
+// (including the three env-var-backed tunables). Kong resolves the env bindings in-plugin at parse
+// time and dispatchBuild threads the resolved values into the spec.BuildRequest it invokes
+// build:box with.
+//
+// ONE flag's SPELLING changed, deliberately: the inner-concurrency flag is `--stage-parallelism` /
+// `CHARLY_STAGE_PARALLELISM`, not `--podman-jobs` / `CHARLY_PODMAN_JOBS`. The CONTRACT renamed that
+// knob `podman_jobs` → `stage_parallelism` (spec/schema/buildwire.cue, sdk/buildkit.
+// ResolveStageParallelism) and the builder is BuildKit — the value drives the daemon's
+// `[worker.oci] max-parallelism`, not `podman build --jobs N` — so the retired driver's name was the
+// one false word left on the surface (the flag's own help read "Stages per podman build"). The
+// published build skill, the generated docs recipe and the contract all name the contract's
+// spelling, and a command that fails AT THE FLAG is the defect (opencharly/plugin-box#65).
 type buildGrammar struct {
-	Boxes           []string `arg:"" optional:"" help:"Boxes to build (default: all enabled; the sentinel 'all' is equivalent). Supports remote refs (github.com/org/repo/box[@version])"`
-	Push            bool     `name:"push" help:"Push to registry after building"`
-	Tag             string   `name:"tag" help:"Override tag (default: CalVer)"`
-	Platform        string   `name:"platform" help:"Target platform (default: host platform)"`
-	Cache           string   `name:"cache" help:"Build cache type: registry, image, gha, none (default: auto)" env:"CHARLY_BUILD_CACHE"`
-	NoCache         bool     `name:"no-cache" help:"Disable build cache entirely"`
-	Jobs            int      `name:"jobs" help:"Max concurrent image builds per DAG level (0=auto: defaults.jobs, else 4)" env:"CHARLY_BUILD_JOBS"`
-	PodmanJobs      int      `name:"podman-jobs" help:"Stages per podman build (0=auto: min(NCPU, defaults.podman_jobs_cap))" env:"CHARLY_PODMAN_JOBS"`
-	IncludeDisabled bool     `name:"include-disabled" help:"Build boxes with enabled: false in charly.yml (does not modify the file). Use for one-off operational rebuilds without flipping authored config."`
-	DevLocalPkg     bool     `name:"dev-local-pkg" help:"Build localpkg candies (the charly toolchain) from LOCAL in-development source instead of downloading the published release. Set automatically for disposable check-bed image builds so a bed tests in-development code; never on a production box build."`
+	Boxes            []string `arg:"" optional:"" help:"Boxes to build (default: all enabled; the sentinel 'all' is equivalent). Supports remote refs (github.com/org/repo/box[@version])"`
+	Push             bool     `name:"push" help:"Push to registry after building"`
+	Tag              string   `name:"tag" help:"Override tag (default: CalVer)"`
+	Platform         string   `name:"platform" help:"Target platform (default: host platform)"`
+	Cache            string   `name:"cache" help:"Build cache type: registry, image, gha, none (default: auto)" env:"CHARLY_BUILD_CACHE"`
+	NoCache          bool     `name:"no-cache" help:"Disable build cache entirely"`
+	Jobs             int      `name:"jobs" help:"Max concurrent image builds per DAG level (0=auto: defaults.jobs, else 4)" env:"CHARLY_BUILD_JOBS"`
+	StageParallelism int      `name:"stage-parallelism" help:"Stages per build (0=auto: min(NCPU, defaults.stage_parallelism_cap))" env:"CHARLY_STAGE_PARALLELISM"`
+	IncludeDisabled  bool     `name:"include-disabled" help:"Build boxes with enabled: false in charly.yml (does not modify the file). Use for one-off operational rebuilds without flipping authored config."`
+	DevLocalPkg      bool     `name:"dev-local-pkg" help:"Build localpkg candies (the charly toolchain) from LOCAL in-development source instead of downloading the published release. Set automatically for disposable check-bed image builds so a bed tests in-development code; never on a production box build."`
 }
 
 // dispatchBuild runs the `charly box build` body IN-PLUGIN (P8b — the former hidden core
@@ -268,17 +282,17 @@ func dispatchBuild(hc *hostClient, args []string) error {
 	}
 
 	req := spec.BuildRequest{
-		Boxes:           boxes,
-		Tag:             tag,
-		Dir:             dir,
-		IncludeDisabled: g.IncludeDisabled,
-		DevLocalPkg:     g.DevLocalPkg,
-		Push:            g.Push,
-		Platform:        g.Platform,
-		Cache:           g.Cache,
-		NoCache:         g.NoCache,
-		Jobs:            g.Jobs,
-		PodmanJobs:      g.PodmanJobs,
+		Boxes:            boxes,
+		Tag:              tag,
+		Dir:              dir,
+		IncludeDisabled:  g.IncludeDisabled,
+		DevLocalPkg:      g.DevLocalPkg,
+		Push:             g.Push,
+		Platform:         g.Platform,
+		Cache:            g.Cache,
+		NoCache:          g.NoCache,
+		Jobs:             g.Jobs,
+		StageParallelism: g.StageParallelism,
 	}
 
 	// Remote-ref pivot: detection is pure (a box arg that is itself a remote @ref, or a thin

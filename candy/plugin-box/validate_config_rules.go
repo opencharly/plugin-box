@@ -176,11 +176,11 @@ func validateBuildTunables(cfg *spec.Config, errs *spec.ValidationError) {
 		if ic.Jobs != nil && *ic.Jobs < 1 {
 			errs.Add("%s: jobs must be >= 1, got %d", name, *ic.Jobs)
 		}
-		if ic.PodmanJobs != nil && *ic.PodmanJobs < 0 {
-			errs.Add("%s: podman_jobs must be >= 0, got %d", name, *ic.PodmanJobs)
+		if ic.StageParallelism != nil && *ic.StageParallelism < 0 {
+			errs.Add("%s: stage_parallelism must be >= 0, got %d", name, *ic.StageParallelism)
 		}
-		if ic.PodmanJobsCap != nil && *ic.PodmanJobsCap < 1 {
-			errs.Add("%s: podman_jobs_cap must be >= 1, got %d", name, *ic.PodmanJobsCap)
+		if ic.StageParallelismCap != nil && *ic.StageParallelismCap < 1 {
+			errs.Add("%s: stage_parallelism_cap must be >= 1, got %d", name, *ic.StageParallelismCap)
 		}
 		if !validMergeConfigCacheModes[ic.Cache] {
 			errs.Add("%s: cache must be one of image|registry|gha|none, got %q", name, ic.Cache)

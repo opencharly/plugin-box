@@ -115,7 +115,7 @@ func mergeOneBox(hc *hostClient, rp *spec.ResolvedProject, boxName string, g mer
 
 	reqJSON, err := json.Marshal(spec.MergeRequest{
 		ImageRef:   kit.ResolveShellImageRef(box.Registry, box.Name, g.Tag),
-		Engine:     rt.BuildEngine,
+		Engine:     rt.RunEngine,
 		MaxMB:      maxMB,
 		MaxTotalMB: maxTotalMB,
 		DryRun:     g.DryRun,

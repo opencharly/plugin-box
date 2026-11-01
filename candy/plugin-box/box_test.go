@@ -104,12 +104,14 @@ func TestNewGrammar_Parse(t *testing.T) {
 	}
 }
 
-// TestPullGrammar_Parse confirms `box pull` accepts the required box positional plus the two
-// optional --tag/--platform flags — byte-identical to the former static BoxPullCmd Kong leaf
-// (FINAL/K5 unit 6a M4c).
+// TestPullGrammar_Parse confirms `box pull` accepts the required box positional plus the optional
+// --tag flag — byte-identical to the former static BoxPullCmd Kong leaf (FINAL/K5 unit 6a M4c).
+//
+// It also asserts that `--platform` is GONE (opencharly/plugin-box#40): it was parsed and never
+// read, so this test now fails if anyone re-adds a flag with no consumer behind it.
 func TestPullGrammar_Parse(t *testing.T) {
 	var g pullGrammar
-	if _, err := parseLeaf("pull", &g, []string{"jupyter", "--tag", "2026.100.0000", "--platform", "linux/amd64"}); err != nil {
+	if _, err := parseLeaf("pull", &g, []string{"jupyter", "--tag", "2026.100.0000"}); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	if g.Box != "jupyter" {
@@ -118,13 +120,14 @@ func TestPullGrammar_Parse(t *testing.T) {
 	if g.Tag != "2026.100.0000" {
 		t.Errorf("Tag = %q, want 2026.100.0000", g.Tag)
 	}
-	if g.Platform != "linux/amd64" {
-		t.Errorf("Platform = %q, want linux/amd64", g.Platform)
+	if _, err := parseLeaf("pull", &g, []string{"jupyter", "--platform", "linux/amd64"}); err == nil {
+		t.Error("`box pull --platform` still parses: the flag was deleted as dead, so a re-added spelling must fail loudly rather than be silently accepted again")
 	}
 }
 
-// TestPullGrammar_Parse_MinimalArgs confirms Tag/Platform default to empty (unset) when omitted —
-// dispatchPull relies on this to decide whether to forward them in the reentry argv.
+// TestPullGrammar_Parse_MinimalArgs confirms Tag defaults to empty (unset) when omitted —
+// dispatchPull relies on this to decide whether to forward it in the reentry argv. The platform
+// assertion is gone with the flag itself (opencharly/plugin-box#40).
 func TestPullGrammar_Parse_MinimalArgs(t *testing.T) {
 	var g pullGrammar
 	if _, err := parseLeaf("pull", &g, []string{"ghcr.io/opencharly/jupyter:v1"}); err != nil {
@@ -135,9 +138,6 @@ func TestPullGrammar_Parse_MinimalArgs(t *testing.T) {
 	}
 	if g.Tag != "" {
 		t.Errorf("Tag = %q, want empty", g.Tag)
-	}
-	if g.Platform != "" {
-		t.Errorf("Platform = %q, want empty", g.Platform)
 	}
 }
 
@@ -150,7 +150,7 @@ func TestBuildGrammar_Parse(t *testing.T) {
 		"jupyter", "arch-builder",
 		"--push", "--tag", "2026.100.0000", "--platform", "linux/amd64",
 		"--cache", "registry", "--no-cache",
-		"--jobs", "8", "--podman-jobs", "2",
+		"--jobs", "8", "--stage-parallelism", "2",
 		"--include-disabled", "--dev-local-pkg",
 	}
 	if _, err := parseLeaf("build", &g, args); err != nil {
@@ -177,8 +177,8 @@ func TestBuildGrammar_Parse(t *testing.T) {
 	if g.Jobs != 8 {
 		t.Errorf("Jobs = %d, want 8", g.Jobs)
 	}
-	if g.PodmanJobs != 2 {
-		t.Errorf("PodmanJobs = %d, want 2", g.PodmanJobs)
+	if g.StageParallelism != 2 {
+		t.Errorf("StageParallelism = %d, want 2", g.StageParallelism)
 	}
 	if !g.IncludeDisabled {
 		t.Error("IncludeDisabled = false, want true")
@@ -233,12 +233,12 @@ func TestAcquireBuildActivityLock_WritesContentAndReleases(t *testing.T) {
 }
 
 // TestBuildGrammar_JobsEnvBindings verifies the Kong env bindings on the build parallelism +
-// cache flags — CHARLY_BUILD_JOBS → Jobs, CHARLY_PODMAN_JOBS → PodmanJobs, CHARLY_BUILD_CACHE →
-// Cache. Moved from charly/build_jobs_test.go (P8b — the former core BuildCmd is DELETED; the env
-// bindings now live on this grammar), so the bindings can't silently regress.
+// cache flags — CHARLY_BUILD_JOBS → Jobs, CHARLY_STAGE_PARALLELISM → StageParallelism,
+// CHARLY_BUILD_CACHE → Cache. Moved from charly/build_jobs_test.go (P8b — the former core BuildCmd
+// is DELETED; the env bindings now live on this grammar), so the bindings can't silently regress.
 func TestBuildGrammar_JobsEnvBindings(t *testing.T) {
 	t.Setenv("CHARLY_BUILD_JOBS", "6")
-	t.Setenv("CHARLY_PODMAN_JOBS", "9")
+	t.Setenv("CHARLY_STAGE_PARALLELISM", "9")
 	t.Setenv("CHARLY_BUILD_CACHE", "registry")
 
 	var cli struct {
@@ -254,8 +254,8 @@ func TestBuildGrammar_JobsEnvBindings(t *testing.T) {
 	if cli.Build.Jobs != 6 {
 		t.Errorf("Jobs from CHARLY_BUILD_JOBS = %d, want 6", cli.Build.Jobs)
 	}
-	if cli.Build.PodmanJobs != 9 {
-		t.Errorf("PodmanJobs from CHARLY_PODMAN_JOBS = %d, want 9", cli.Build.PodmanJobs)
+	if cli.Build.StageParallelism != 9 {
+		t.Errorf("StageParallelism from CHARLY_STAGE_PARALLELISM = %d, want 9", cli.Build.StageParallelism)
 	}
 	if cli.Build.Cache != "registry" {
 		t.Errorf("Cache from CHARLY_BUILD_CACHE = %q, want registry", cli.Build.Cache)
@@ -278,7 +278,7 @@ func TestBuildGrammar_Parse_MinimalArgs(t *testing.T) {
 	if g.Tag != "" || g.Platform != "" || g.Cache != "" {
 		t.Errorf("string flags = %+v, want all empty", g)
 	}
-	if g.Jobs != 0 || g.PodmanJobs != 0 {
+	if g.Jobs != 0 || g.StageParallelism != 0 {
 		t.Errorf("int flags = %+v, want all zero", g)
 	}
 }

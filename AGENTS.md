@@ -13,6 +13,11 @@ Canonical files:
   `inspect_list.go`, `box_load.go`, `merge_cmd.go`, `reconcile.go`,
   `cmd/serve/main.go`.
 - `.github/workflows/tag-on-merge.yml` — CalVer tag + `CHANGELOG/` on merge.
+- `.agents/skills/<name>/SKILL.md` (10) — the `charly box` verb skills (`build`,
+  `generate`, `inspect`, `list`, `load`, `merge`, `new`, `pull`, `reconcile`,
+  `validate`), authored HERE beside the handlers they document. Their
+  routing-only `skill:` nodes are in `candy/plugin-box/charly.yml`; the prose is
+  the file, so never inline a `description:`/`content:` back into a node.
 - `README.md` — user overview only; never agent guidance.
 
 ## Load these skills first (R0)
