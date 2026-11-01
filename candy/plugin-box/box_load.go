@@ -126,12 +126,18 @@ func dispatchLoad(hc *hostClient, args []string) error {
 // plugin-kube's kindNodeHasImage probes).
 func kindControlPlaneNode(cluster string) string { return cluster + "-control-plane" }
 
+// kindCtrNamespace is the containerd namespace kubelet reads. `ctr` writes to `default`
+// unless told otherwise, so an image imported into any other namespace is invisible to the
+// cluster: this constant is the ONE place that scope is decided, and both consumers below
+// derive their own `-n` from it.
+const kindCtrNamespace = "k8s.io"
+
 // kindCtrImportArgv is the argv, run on the OPERATOR's engine, that reads a `podman save`
-// archive on stdin and imports it into the node's containerd. `-n k8s.io` is the namespace
-// kubelet reads, so the imported image is visible to the cluster; `import -` reads stdin,
-// so no archive ever lands on the node's disk. Pure so it is unit-pinned.
+// archive on stdin and imports it into the node's containerd, scoped to kindCtrNamespace;
+// `import -` reads stdin, so no archive ever lands on the node's disk. Pure so it is
+// unit-pinned.
 func kindCtrImportArgv(node string) []string {
-	return []string{"exec", "-i", node, "ctr", "-n", "k8s.io", "images", "import", "-"}
+	return []string{"exec", "-i", node, "ctr", "-n", kindCtrNamespace, "images", "import", "-"}
 }
 
 // loadIntoKindNode delivers a host image into a KUBERNETES (kind) cluster's NODE containerd,
@@ -161,10 +167,10 @@ func loadIntoKindNode(hc *hostClient, g loadGrammar, ref string) error {
 	}
 
 	ctx := hc.ctx
-	// The in-node store verb. `-n k8s.io` is the namespace kubelet reads, so an image imported
-	// here is visible to the cluster. Reused verbatim by the probe (HasImage), the tag, the
-	// removal and the load — the ONE place the store scope is decided.
-	ctr := "ctr -n k8s.io"
+	// The in-node store verb, scoped to kindCtrNamespace — the seam below decides the verb,
+	// and kindCtrImportArgv derives its own `-n` from the SAME constant, so the load cannot
+	// drift into a namespace kubelet does not read.
+	ctr := "ctr -n " + kindCtrNamespace
 	venue := deploykit.NewNodeVenue(
 		&specexec.NestedExecutor{Parent: specexec.ShellExecutor{}, Jump: specexec.NestedJump{Kind: specexec.JumpContainerExec, Engine: engine, Target: node}},
 		ctr,
