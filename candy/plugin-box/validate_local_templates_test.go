@@ -9,10 +9,15 @@ package box
 // candy ref that does not resolve, and a known candy are four distinct outcomes, and a malformed
 // body is a host/load concern this rule stays silent about.
 //
-// It fails on an ASSERTION without the change only in the sense that matters for the cutover: the
-// decode target is the envelope, and a regression to the authored type would break the build once
-// the contract leg drops `spec.Local` — while a silent decode failure would make every template
-// pass here, which the "missing required field" and "candy not found" cases below catch.
+// WHAT THIS TEST PINS, AND WHAT IT DOES NOT. It pins the RULE's judgement through the envelope —
+// three distinct findings and two silent cases — and it fails on an assertion if the decode silently
+// stops carrying a field: every template would then pass and the count assertion catches it.
+//
+// It does NOT fail on the decode-TARGET swap itself, and the review was right to say so: the
+// authored type and the envelope carry the same JSON shape, so the swap is behaviour-preserving by
+// construction. The witness that fails without the swap is a BUILD-level one and arrives with the
+// contract leg that deletes the authored type (opencharly/spec#304 unit 4); until that leg lands,
+// this change's tier is `analysed on a live system`, never `fully tested and validated`.
 
 import (
 	"strings"
