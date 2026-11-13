@@ -589,8 +589,12 @@ func validateMCPDeps(vc *vctx, e *vErr) {
 }
 
 // validateLocalTemplates checks each kind:local template's candy references. The opaque Local body
-// rides the envelope as spec.Templates.Local RawBody; the plugin decodes it into spec.Local (a plugin
-// MAY know a kind the kernel may not) and reads the authored candy stack.
+// rides the envelope as ProjectTemplates.Local RawBody; the plugin decodes it into the contract's own
+// spec.ResolvedLocal envelope — the shape a RESOLVED local body has everywhere else (the kernel's
+// OpResolve reply carries the same fields) — and reads the authored candy stack. It is the envelope
+// and not the authored body type on purpose: opencharly/spec#304 unit 4 moves the authored `#Local`
+// body, and the Go type generated from it, into the plugin that serves the kind, so a consumer
+// outside that plugin holds the contract envelope and never the authored type.
 func validateLocalTemplates(vc *vctx, e *vErr) {
 	if vc.env == nil || vc.env.Templates == nil {
 		return
@@ -599,7 +603,7 @@ func validateLocalTemplates(vc *vctx, e *vErr) {
 		if len(raw) == 0 {
 			continue
 		}
-		var lt spec.Local
+		var lt spec.ResolvedLocal
 		if err := json.Unmarshal(raw, &lt); err != nil {
 			continue // a malformed template is a host/load concern, not a validate finding
 		}
