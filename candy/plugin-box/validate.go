@@ -123,7 +123,6 @@ func runValidateEngine(ctx context.Context, exec *sdk.Executor, dir string, incl
 	}
 	merged = mergePluginFindings(merged, e)
 	return merged, summarize(project, merged), nil
-
 }
 
 // validateWordSetsBuilderKind is the F11 host-builder kind the host answers the registry-D word
@@ -222,8 +221,8 @@ func (e *vErr) Add(format string, a ...any) { e.msgs = append(e.msgs, fmt.Sprint
 func (e *vErr) Warn(format string, a ...any) { e.warns = append(e.warns, fmt.Sprintf(format, a...)) }
 
 // mergePluginFindings turns the plugin's accumulated findings into diagnostics, errors first and
-// then warnings. It is the ONE place a finding becomes a diagnostic, so nothing a rule reports can
-// bypass the channel `summarize` counts.
+// then warnings. It is the ONE place a RULE's finding becomes a diagnostic (the schema/CUE findings
+// ride in earlier, above), so no rule can bypass the channel `summarize` counts.
 func mergePluginFindings(merged spec.Diagnostics, e *vErr) spec.Diagnostics {
 	for _, m := range e.msgs {
 		merged.Items = append(merged.Items, spec.Diagnostic{Severity: "error", Message: m})
