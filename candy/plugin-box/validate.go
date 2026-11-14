@@ -121,10 +121,9 @@ func runValidateEngine(ctx context.Context, exec *sdk.Executor, dir string, incl
 	for _, m := range schema.msgs {
 		merged.Items = append(merged.Items, spec.Diagnostic{Severity: "error", Message: m})
 	}
-	for _, m := range e.msgs {
-		merged.Items = append(merged.Items, spec.Diagnostic{Severity: "error", Message: m})
-	}
+	merged = mergePluginFindings(merged, e)
 	return merged, summarize(project, merged), nil
+
 }
 
 // validateWordSetsBuilderKind is the F11 host-builder kind the host answers the registry-D word
@@ -204,10 +203,36 @@ func buildValidateWordSetsRequest(project *spec.ResolvedProject) spec.ValidateWo
 }
 
 // vErr accumulates the plugin's own validation findings (the host's ride in reply.Diagnostics).
-type vErr struct{ msgs []string }
+//
+// It carries TWO channels, because a finding the reader sees must be a finding the SUMMARY counts.
+// A warning written straight to stderr is invisible to `summarize`, which counts warning-severity
+// DIAGNOSTICS — measured on opencharly/distro-cachyos: `box validate` printed
+// `Warning: box "krun-host" includes candy … packaged-only service …` and then reported
+// `0 warnings` in the same breath (opencharly/distro-cachyos#163).
+type vErr struct {
+	msgs  []string
+	warns []string
+}
 
-// Add appends one formatted finding.
+// Add appends one formatted ERROR finding.
 func (e *vErr) Add(format string, a ...any) { e.msgs = append(e.msgs, fmt.Sprintf(format, a...)) }
+
+// Warn appends one formatted WARNING finding. It is non-fatal and it is counted: the diagnostic it
+// becomes is the same set `summarize` reads, so the number and the message can never disagree.
+func (e *vErr) Warn(format string, a ...any) { e.warns = append(e.warns, fmt.Sprintf(format, a...)) }
+
+// mergePluginFindings turns the plugin's accumulated findings into diagnostics, errors first and
+// then warnings. It is the ONE place a finding becomes a diagnostic, so nothing a rule reports can
+// bypass the channel `summarize` counts.
+func mergePluginFindings(merged spec.Diagnostics, e *vErr) spec.Diagnostics {
+	for _, m := range e.msgs {
+		merged.Items = append(merged.Items, spec.Diagnostic{Severity: "error", Message: m})
+	}
+	for _, m := range e.warns {
+		merged.Items = append(merged.Items, spec.Diagnostic{Severity: "warning", Message: m})
+	}
+	return merged
+}
 
 // vctx is the validation context: the resolved-project envelope plus the two deploykit/buildkit
 // adapters the resolution-graph rules run over. models/views/boxes are the envelope maps verbatim;

@@ -12,7 +12,6 @@ package box
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -156,7 +155,10 @@ func validatePackagedServices(vc *vctx, e *vErr) {
 			if !ok || !candyHasOrphanPackaged(m) {
 				continue
 			}
-			fmt.Fprintf(os.Stderr, "Warning: box %q includes candy %q with a packaged-only service (no custom-exec sibling), but composition does not preserve_user (its systemd unit will be ignored)\n", boxName, bare)
+			// A DIAGNOSTIC, not a bare fprintf: `summarize` counts warning-severity diagnostics, so
+			// writing this to stderr made the gate print a warning and report `0 warnings` in the
+			// same run (opencharly/distro-cachyos#163). One channel, one count, one message.
+			e.Warn("box %q includes candy %q with a packaged-only service (no custom-exec sibling), but composition does not preserve_user (its systemd unit will be ignored)", boxName, bare)
 		}
 	}
 }
