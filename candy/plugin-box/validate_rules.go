@@ -9,6 +9,7 @@ package box
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/opencharly/sdk/rawbody"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -406,11 +407,13 @@ func validatePkgConfig(vc *vctx, e *vErr) {
 func validateVolume(vc *vctx, e *vErr) {
 	for name := range vc.models {
 		m := vc.models[name]
-		if len(m.Volumes) == 0 {
+		// volumes cross the IR as opaque bytes; decode once per candy.
+		vols := rawbody.Decode[spec.CandyVolume](m.Volumes, "volumes")
+		if len(vols) == 0 {
 			continue
 		}
 		seen := make(map[string]bool)
-		for _, vol := range m.Volumes {
+		for _, vol := range vols {
 			if seen[vol.Name] {
 				e.Add("candy %q candy manifest volumes: duplicate volume name %q", name, vol.Name)
 			}
@@ -423,11 +426,13 @@ func validateVolume(vc *vctx, e *vErr) {
 func validateAliases(vc *vctx, e *vErr) {
 	for name := range vc.models {
 		m := vc.models[name]
-		if len(m.Aliases) == 0 {
+		// aliases cross the IR as opaque bytes; decode once per candy.
+		als := rawbody.Decode[spec.CandyAlias](m.Aliases, "aliases")
+		if len(als) == 0 {
 			continue
 		}
 		seen := make(map[string]bool)
-		for _, a := range m.Aliases {
+		for _, a := range als {
 			if a.Name != "" && !aliasNameRe.MatchString(a.Name) {
 				e.Add("candy %q candy manifest aliases: name %q must match [a-zA-Z0-9][a-zA-Z0-9._-]*", name, a.Name)
 			}

@@ -12,6 +12,7 @@ package box
 import (
 	"errors"
 	"fmt"
+	"github.com/opencharly/sdk/rawbody"
 	"os"
 	"path/filepath"
 	"sort"
@@ -127,8 +128,10 @@ func candyHasFormatConfig(dk deploykit.CandyModel, formatName string) bool {
 func validatePackagedServices(vc *vctx, e *vErr) {
 	for name := range vc.models {
 		m := vc.models[name]
-		for i := range m.Service {
-			entry := &m.Service[i]
+		// service crosses the IR as opaque bytes; decode once per candy at the point of use.
+		services := rawbody.Decode[spec.CandyService](m.Service, "service")
+		for i := range services {
+			entry := &services[i]
 			if !entry.IsPackaged() {
 				continue
 			}
@@ -140,7 +143,7 @@ func validatePackagedServices(vc *vctx, e *vErr) {
 				e.Add("candy %q: service[%d] use_packaged %q must be a unit name (no paths or spaces)", name, i, unit)
 			}
 		}
-		if candyHasPackaged(m) && !candyHasAnyPackages(m) {
+		if candyHasPackaged(services) && !candyHasAnyPackages(m) {
 			e.Add("candy %q: use_packaged entries require candy packages (distro tag sections or top-level package:) that provide those units", name)
 		}
 	}
@@ -153,7 +156,7 @@ func validatePackagedServices(vc *vctx, e *vErr) {
 		for _, candyRef := range box.Candy {
 			bare := deploykit.BareRef(candyRef)
 			m, ok := vc.models[bare]
-			if !ok || !candyHasOrphanPackaged(m) {
+			if !ok || !candyHasOrphanPackaged(rawbody.Decode[spec.CandyService](m.Service, "service")) {
 				continue
 			}
 			fmt.Fprintf(os.Stderr, "Warning: box %q includes candy %q with a packaged-only service (no custom-exec sibling), but composition does not preserve_user (its systemd unit will be ignored)\n", boxName, bare)
@@ -162,9 +165,9 @@ func validatePackagedServices(vc *vctx, e *vErr) {
 }
 
 // candyHasPackaged reports whether any service entry reuses a distro-shipped unit.
-func candyHasPackaged(m spec.CandyModel) bool {
-	for i := range m.Service {
-		if m.Service[i].IsPackaged() {
+func candyHasPackaged(services []spec.CandyService) bool {
+	for i := range services {
+		if services[i].IsPackaged() {
 			return true
 		}
 	}
@@ -173,16 +176,16 @@ func candyHasPackaged(m spec.CandyModel) bool {
 
 // candyHasOrphanPackaged reports whether the candy has a use_packaged service entry with NO custom-exec
 // sibling of the same name (only such orphan units are dropped under supervisord).
-func candyHasOrphanPackaged(m spec.CandyModel) bool {
+func candyHasOrphanPackaged(services []spec.CandyService) bool {
 	customNames := make(map[string]bool)
-	for i := range m.Service {
-		s := &m.Service[i]
+	for i := range services {
+		s := &services[i]
 		if !s.IsPackaged() && s.Exec != "" && s.Name != "" {
 			customNames[s.Name] = true
 		}
 	}
-	for i := range m.Service {
-		s := &m.Service[i]
+	for i := range services {
+		s := &services[i]
 		if s.IsPackaged() && !customNames[s.Name] {
 			return true
 		}
@@ -295,10 +298,12 @@ func providesSocatRelay(candyName string) bool {
 func validateDataCandies(vc *vctx, e *vErr) {
 	for name := range vc.models {
 		m := vc.models[name]
-		if len(m.Data) == 0 {
+		// data crosses the IR as opaque bytes; decode once per candy.
+		data := rawbody.Decode[spec.CandyData](m.Data, "data")
+		if len(data) == 0 {
 			continue
 		}
-		for _, d := range m.Data {
+		for _, d := range data {
 			if !dirExists(filepath.Join(m.SourceDir, d.Src)) {
 				e.Add("candy %s: data src %q does not exist or is not a directory", name, d.Src)
 			}
@@ -317,7 +322,7 @@ func validateDataCandies(vc *vctx, e *vErr) {
 			if !ok {
 				continue
 			}
-			for _, vol := range m.Volumes {
+			for _, vol := range rawbody.Decode[spec.CandyVolume](m.Volumes, "volumes") {
 				volumeNames[vol.Name] = true
 			}
 		}
@@ -328,7 +333,7 @@ func validateDataCandies(vc *vctx, e *vErr) {
 				continue
 			}
 			hasData = true
-			for _, d := range m.Data {
+			for _, d := range rawbody.Decode[spec.CandyData](m.Data, "data") {
 				if !volumeNames[d.Volume] {
 					e.Add("box %s: candy %s data references volume %q which is not declared by any candy in the box", imgName, candyName, d.Volume)
 				}
@@ -346,7 +351,7 @@ func validateDataCandies(vc *vctx, e *vErr) {
 				if !ok {
 					continue
 				}
-				if len(m.Service) > 0 {
+				if len(rawbody.Decode[spec.CandyService](m.Service, "service")) > 0 {
 					e.Add("box %s: data_image includes candy %s which has service: declarations", imgName, candyName)
 				}
 				if len(vc.views[candyName].Ports) > 0 {
