@@ -14,6 +14,7 @@ package box
 //     FAILS if the check ever regresses back to the wrong key.
 
 import (
+	"github.com/opencharly/sdk/rawbody"
 	"strings"
 	"testing"
 
@@ -96,14 +97,14 @@ func TestCandyHasOrphanPackaged(t *testing.T) {
 		want  bool
 	}{
 		{"no services", spec.CandyModel{}, false},
-		{"mixed-form (packaged + same-name exec sibling) — sshd — no orphan", spec.CandyModel{Service: []spec.CandyService{{Name: "sshd", UsePackaged: "sshd.service"}, {Name: "sshd", Exec: "/usr/local/bin/sshd-wrapper"}}}, false},
-		{"packaged-only — postgresql — orphan", spec.CandyModel{Service: []spec.CandyService{{Name: "postgresql", UsePackaged: "postgresql.service"}}}, true},
-		{"packaged with a DIFFERENT-name exec sibling — still orphan", spec.CandyModel{Service: []spec.CandyService{{Name: "postgresql", UsePackaged: "postgresql.service"}, {Name: "other", Exec: "/bin/other"}}}, true},
-		{"custom-only — no orphan", spec.CandyModel{Service: []spec.CandyService{{Name: "svc", Exec: "svc serve"}}}, false},
+		{"mixed-form (packaged + same-name exec sibling) — sshd — no orphan", spec.CandyModel{Service: rawbody.Encode([]spec.CandyService{{Name: "sshd", UsePackaged: "sshd.service"}, {Name: "sshd", Exec: "/usr/local/bin/sshd-wrapper"}}, "service")}, false},
+		{"packaged-only — postgresql — orphan", spec.CandyModel{Service: rawbody.Encode([]spec.CandyService{{Name: "postgresql", UsePackaged: "postgresql.service"}}, "service")}, true},
+		{"packaged with a DIFFERENT-name exec sibling — still orphan", spec.CandyModel{Service: rawbody.Encode([]spec.CandyService{{Name: "postgresql", UsePackaged: "postgresql.service"}, {Name: "other", Exec: "/bin/other"}}, "service")}, true},
+		{"custom-only — no orphan", spec.CandyModel{Service: rawbody.Encode([]spec.CandyService{{Name: "svc", Exec: "svc serve"}}, "service")}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := candyHasOrphanPackaged(tt.model); got != tt.want {
+			if got := candyHasOrphanPackaged(rawbody.Decode[spec.CandyService](tt.model.Service, "service")); got != tt.want {
 				t.Errorf("candyHasOrphanPackaged() = %v, want %v", got, tt.want)
 			}
 		})
