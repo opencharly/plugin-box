@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/opencharly/sdk/rawbody"
 	"os"
 	"sort"
 	"strings"
@@ -224,7 +225,8 @@ func printInspectFormat(view spec.ResolvedBoxView, format string) error {
 			fmt.Printf("%s\t%s\n", vol.VolumeName, vol.ContainerPath)
 		}
 	case "aliases":
-		for _, a := range view.Aliases {
+		// The box view carries its aliases as OPAQUE BYTES (spec#336); decode before printing.
+		for _, a := range rawbody.Decode[spec.CandyAlias](view.Aliases, "aliases") {
 			fmt.Printf("%s\t%s\n", a.Name, a.Command)
 		}
 	case "engine":
@@ -362,7 +364,8 @@ func listRoutes(rp *spec.ResolvedProject) {
 // listVolumes prints each candy's declared volumes (candy name + volume name + path).
 func listVolumes(rp *spec.ResolvedProject) {
 	for _, name := range sortedKeys(rp.Candies) {
-		for _, vol := range rp.Candies[name].Volumes {
+		// The candy view carries volumes as OPAQUE BYTES; decode before printing.
+		for _, vol := range rawbody.Decode[spec.CandyVolume](rp.Candies[name].Volumes, "volumes") {
 			fmt.Printf("%s\t%s\t%s\n", name, vol.Name, vol.Path)
 		}
 	}
@@ -371,7 +374,8 @@ func listVolumes(rp *spec.ResolvedProject) {
 // listAliases prints each candy's declared aliases (candy name + alias name + command).
 func listAliases(rp *spec.ResolvedProject) {
 	for _, name := range sortedKeys(rp.Candies) {
-		for _, a := range rp.Candies[name].Aliases {
+		// The candy view carries aliases as OPAQUE BYTES; decode before printing.
+		for _, a := range rawbody.Decode[spec.CandyAlias](rp.Candies[name].Aliases, "aliases") {
 			fmt.Printf("%s\t%s\t%s\n", name, a.Name, a.Command)
 		}
 	}
