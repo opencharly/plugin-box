@@ -20,8 +20,8 @@ func TestListVolumesAndAliasesDecodeTheOpaqueViews(t *testing.T) {
 		Candies: map[string]spec.CandyView{
 			"sshd": {
 				Name:    "sshd",
-				Volumes: rawbody.Encode([]spec.CandyVolume{{Name: "sshconf", Path: "/etc/ssh"}}, "volumes"),
-				Aliases: rawbody.Encode([]spec.CandyAlias{{Name: "sshd-alias", Command: "/usr/sbin/sshd"}}, "aliases"),
+				Volumes: rawbody.Encode([]spec.ResolvedCandyVolume{{Name: "sshconf", Path: "/etc/ssh"}}, "volumes"),
+				Aliases: rawbody.Encode([]spec.ResolvedCandyAlias{{Name: "sshd-alias", Command: "/usr/sbin/sshd"}}, "aliases"),
 			},
 		},
 	}
