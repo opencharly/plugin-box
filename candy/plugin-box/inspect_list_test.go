@@ -3,6 +3,7 @@ package box
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/opencharly/sdk/rawbody"
 	"io"
 	"os"
 	"reflect"
@@ -65,7 +66,7 @@ func TestInspectDefaultJSON_SnakeCaseCanonical(t *testing.T) {
 		FullTag:             "ghcr.io/opencharly/charly-fedora:v1",
 		Ports:               []string{"8080:8080"},
 		Volumes:             []spec.ResolvedVolumeMount{{VolumeName: "charly-fedora-data", ContainerPath: "/home/user/data"}},
-		Aliases:             []spec.CandyAlias{{Name: "rg", Command: "ripgrep"}},
+		Aliases:             rawbody.Encode([]spec.CandyAlias{{Name: "rg", Command: "ripgrep"}}, "aliases"),
 		Engine:              "podman",
 	}
 	got, err := json.MarshalIndent(view, "", "  ")
@@ -154,7 +155,7 @@ func TestPrintInspectFormat_Coverage(t *testing.T) {
 		Candy:               []string{"ripgrep"},
 		Ports:               []string{"80:80"},
 		Volumes:             []spec.ResolvedVolumeMount{{VolumeName: "vn", ContainerPath: "/p"}},
-		Aliases:             []spec.CandyAlias{{Name: "a", Command: "c"}},
+		Aliases:             rawbody.Encode([]spec.CandyAlias{{Name: "a", Command: "c"}}, "aliases"),
 		// Engine intentionally empty → the "(global default)" fallback path.
 	}
 	for _, f := range []string{
