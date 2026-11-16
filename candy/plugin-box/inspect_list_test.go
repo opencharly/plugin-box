@@ -66,7 +66,7 @@ func TestInspectDefaultJSON_SnakeCaseCanonical(t *testing.T) {
 		FullTag:             "ghcr.io/opencharly/charly-fedora:v1",
 		Ports:               []string{"8080:8080"},
 		Volumes:             []spec.ResolvedVolumeMount{{VolumeName: "charly-fedora-data", ContainerPath: "/home/user/data"}},
-		Aliases:             rawbody.Encode([]spec.CandyAlias{{Name: "rg", Command: "ripgrep"}}, "aliases"),
+		Aliases:             rawbody.Encode([]spec.ResolvedCandyAlias{{Name: "rg", Command: "ripgrep"}}, "aliases"),
 		Engine:              "podman",
 	}
 	got, err := json.MarshalIndent(view, "", "  ")
@@ -155,7 +155,7 @@ func TestPrintInspectFormat_Coverage(t *testing.T) {
 		Candy:               []string{"ripgrep"},
 		Ports:               []string{"80:80"},
 		Volumes:             []spec.ResolvedVolumeMount{{VolumeName: "vn", ContainerPath: "/p"}},
-		Aliases:             rawbody.Encode([]spec.CandyAlias{{Name: "a", Command: "c"}}, "aliases"),
+		Aliases:             rawbody.Encode([]spec.ResolvedCandyAlias{{Name: "a", Command: "c"}}, "aliases"),
 		// Engine intentionally empty → the "(global default)" fallback path.
 	}
 	for _, f := range []string{
