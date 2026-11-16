@@ -322,7 +322,7 @@ func validateDataCandies(vc *vctx, e *vErr) {
 			if !ok {
 				continue
 			}
-			for _, vol := range rawbody.Decode[spec.CandyVolume](m.Volumes, "volumes") {
+			for _, vol := range rawbody.Decode[spec.ResolvedCandyVolume](m.Volumes, "volumes") {
 				volumeNames[vol.Name] = true
 			}
 		}

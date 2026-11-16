@@ -408,7 +408,7 @@ func validateVolume(vc *vctx, e *vErr) {
 	for name := range vc.models {
 		m := vc.models[name]
 		// volumes cross the IR as opaque bytes; decode once per candy.
-		vols := rawbody.Decode[spec.CandyVolume](m.Volumes, "volumes")
+		vols := rawbody.Decode[spec.ResolvedCandyVolume](m.Volumes, "volumes")
 		if len(vols) == 0 {
 			continue
 		}
@@ -427,7 +427,7 @@ func validateAliases(vc *vctx, e *vErr) {
 	for name := range vc.models {
 		m := vc.models[name]
 		// aliases cross the IR as opaque bytes; decode once per candy.
-		als := rawbody.Decode[spec.CandyAlias](m.Aliases, "aliases")
+		als := rawbody.Decode[spec.ResolvedCandyAlias](m.Aliases, "aliases")
 		if len(als) == 0 {
 			continue
 		}

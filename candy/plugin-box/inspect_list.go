@@ -226,7 +226,7 @@ func printInspectFormat(view spec.ResolvedBoxView, format string) error {
 		}
 	case "aliases":
 		// The box view carries its aliases as OPAQUE BYTES (spec#336); decode before printing.
-		for _, a := range rawbody.Decode[spec.CandyAlias](view.Aliases, "aliases") {
+		for _, a := range rawbody.Decode[spec.ResolvedCandyAlias](view.Aliases, "aliases") {
 			fmt.Printf("%s\t%s\n", a.Name, a.Command)
 		}
 	case "engine":
@@ -365,7 +365,7 @@ func listRoutes(rp *spec.ResolvedProject) {
 func listVolumes(rp *spec.ResolvedProject) {
 	for _, name := range sortedKeys(rp.Candies) {
 		// The candy view carries volumes as OPAQUE BYTES; decode before printing.
-		for _, vol := range rawbody.Decode[spec.CandyVolume](rp.Candies[name].Volumes, "volumes") {
+		for _, vol := range rawbody.Decode[spec.ResolvedCandyVolume](rp.Candies[name].Volumes, "volumes") {
 			fmt.Printf("%s\t%s\t%s\n", name, vol.Name, vol.Path)
 		}
 	}
@@ -375,7 +375,7 @@ func listVolumes(rp *spec.ResolvedProject) {
 func listAliases(rp *spec.ResolvedProject) {
 	for _, name := range sortedKeys(rp.Candies) {
 		// The candy view carries aliases as OPAQUE BYTES; decode before printing.
-		for _, a := range rawbody.Decode[spec.CandyAlias](rp.Candies[name].Aliases, "aliases") {
+		for _, a := range rawbody.Decode[spec.ResolvedCandyAlias](rp.Candies[name].Aliases, "aliases") {
 			fmt.Printf("%s\t%s\t%s\n", name, a.Name, a.Command)
 		}
 	}
