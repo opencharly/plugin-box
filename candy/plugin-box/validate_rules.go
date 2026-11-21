@@ -97,9 +97,9 @@ func validateCandyContents(vc *vctx, e *vErr) {
 		// composed candy owns under the image user's ~/.agents (sdk deploykit skills_install.go,
 		// opencharly/sdk#598), so a candy whose only job is to own skill nodes installs exactly those
 		// bodies. m.Skills is the per-candy ownership the resolve projects (opencharly/spec#254).
-		if !candyHasInstallFiles(m, dk) && len(v.IncludedCandy) == 0 && !dk.HasData() &&
+		if !candyHasInstallFiles(m, dk, vc.builders()) && len(v.IncludedCandy) == 0 && !dk.HasData() &&
 			!v.IsPlugin && m.ExternalBuilder == "" && len(m.Skills) == 0 {
-			e.Add("candy %q: must have at least one install file (candy manifest distro: packages, root.yml, pixi.toml, pyproject.toml, environment.yml, package.json, Cargo.toml, or user.yml), a candy: field, an external_builder:, a plugin: block, or an owned skill: node", name)
+			e.Add("candy %q: must have at least one install file (candy manifest distro: packages, a builder manifest such as pixi.toml, package.json, Cargo.toml or mise.toml, root.yml, or user.yml), a candy: field, an external_builder:, a plugin: block, or an owned skill: node", name)
 		}
 
 		// ADE is MANDATORY per LOCAL candy: a non-empty description: + a plan: with ≥1 deterministic
@@ -402,8 +402,10 @@ func validatePkgConfig(vc *vctx, e *vErr) {
 		for tag, cfg := range m.TagSections {
 			validateRaw(name, "distro."+tag, cfg.Raw, hasPkgs)
 		}
-		for formatName, section := range m.FormatSections {
-			validateRaw(name, formatName, section.Raw, hasPkgs)
+		for tag, cfg := range m.TagSections {
+			for manager, section := range cfg.Managers {
+				validateRaw(name, "distro."+tag+"."+manager, section.Raw, hasPkgs)
+			}
 		}
 	}
 }
@@ -882,30 +884,46 @@ func validateBuildTask(candyName string, idx int, t *spec.Op, e *vErr) {
 // first-class install mechanism (spec/schema/candy.cue #CandyExtract, rendered by
 // sdk/deploykit/candy_stage.go) — a candy that pulls binaries out of another OCI image ships no
 // package/manifest/task files, and agentteams is the first consumer to rely on that.
-func candyHasInstallFiles(m spec.CandyModel, dk deploykit.CandyModel) bool {
-	return candyHasFormatPackages(m) || candyHasTagPackages(m) || len(m.TopPackages) > 0 ||
-		dk.PixiManifest() != "" || dk.GetHasPackageJson() || dk.GetHasCargoToml() ||
+func candyHasInstallFiles(m spec.CandyModel, dk deploykit.CandyModel, builders map[string]*spec.Builder) bool {
+	return candyHasTagPackages(m) || len(m.TopPackages) > 0 || candyHasBuilderManifest(dk, builders) ||
 		len(m.RunOps) > 0 || len(m.Apk) > 0 || dk.HasExtract()
 }
 
-// candyHasAnyPackages is the whole-candy package-presence union (tag ∪ top ∪ format sections).
-func candyHasAnyPackages(m spec.CandyModel) bool {
-	return candyHasTagPackages(m) || len(m.TopPackages) > 0 || candyHasFormatPackages(m)
-}
-
-func candyHasFormatPackages(m spec.CandyModel) bool {
-	for _, s := range m.FormatSections {
-		if len(s.Packages) > 0 {
-			return true
+// candyHasBuilderManifest reports whether the candy carries a manifest one of the vocabulary's
+// builders detects (its detect_file list) — read from the builder DATA, so every builder counts
+// (mise.toml / .tool-versions included), never a hand-maintained list of three (opencharly/sdk#608).
+func candyHasBuilderManifest(dk deploykit.CandyModel, builders map[string]*spec.Builder) bool {
+	if dk == nil {
+		return false
+	}
+	for _, b := range builders {
+		if b == nil {
+			continue
+		}
+		for _, f := range b.DetectFiles {
+			if dk.HasFile(f) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// candyHasAnyPackages is the whole-candy package-presence union (tag sections, their manager
+// declarations, and the top-level list).
+func candyHasAnyPackages(m spec.CandyModel) bool {
+	return candyHasTagPackages(m) || len(m.TopPackages) > 0
 }
 
 func candyHasTagPackages(m spec.CandyModel) bool {
 	for _, s := range m.TagSections {
 		if len(s.Package) > 0 {
 			return true
+		}
+		for _, ms := range s.Managers {
+			if len(ms.Packages) > 0 {
+				return true
+			}
 		}
 	}
 	return false

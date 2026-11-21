@@ -44,17 +44,17 @@ func TestLevenshteinDistance(t *testing.T) {
 }
 
 // TestValidatePkgConfig_ModuleRequiresPackages ← charly/validate_test.go TestValidateModulesWithoutPackages.
-// Envelope unit: a candy carrying a format-section Raw["module"] entry (the SINGULAR key a real authored
-// `distro.<name>.module:` produces) and no packages anywhere must be flagged. The Raw KEY here is exactly
-// what derivePackageSectionsFromCalamares emits for a real candy, so the rule fires on real config — the
+// Envelope unit: a candy carrying a tag-section Raw["module"] entry (the SINGULAR key a real authored
+// `distro.<name>.module:` produces, on that tag's section) and no packages anywhere must be flagged. The
+// Raw KEY here is exactly what the loader emits for a real candy, so the rule fires on real config — the
 // #71 fix. Using the wrong plural "modules" key would make the rule silently pass (the pre-fix bug).
 func TestValidatePkgConfig_ModuleRequiresPackages(t *testing.T) {
 	rp := &spec.ResolvedProject{
 		CandyModels: map[string]spec.CandyModel{
 			"mylyr": {
 				Name: "mylyr",
-				FormatSections: map[string]spec.PackageSection{
-					"rpm": {FormatName: "rpm", Raw: map[string]any{"module": []any{"valkey:remi-9.0"}}},
+				TagSections: map[string]spec.TagPkgConfig{
+					"fedora": {Raw: map[string]any{"module": []any{"valkey:remi-9.0"}}},
 				},
 			},
 		},
@@ -64,16 +64,16 @@ func TestValidatePkgConfig_ModuleRequiresPackages(t *testing.T) {
 	e := &vErr{}
 	validatePkgConfig(vc, e)
 	got := strings.Join(e.msgs, "\n")
-	if !strings.Contains(got, "rpm.module requires packages") {
-		t.Fatalf("want 'rpm.module requires packages', got: %s", got)
+	if !strings.Contains(got, "distro.fedora.module requires packages") {
+		t.Fatalf("want 'distro.fedora.module requires packages', got: %s", got)
 	}
 
 	// Guard the FIX itself: the OLD plural Raw key must NOT fire the rule (real config never
 	// produces it) — a regression to Raw["modules"] would make this candy validate clean.
 	rpPlural := &spec.ResolvedProject{
 		CandyModels: map[string]spec.CandyModel{
-			"mylyr": {Name: "mylyr", FormatSections: map[string]spec.PackageSection{
-				"rpm": {FormatName: "rpm", Raw: map[string]any{"modules": []any{"valkey:remi-9.0"}}},
+			"mylyr": {Name: "mylyr", TagSections: map[string]spec.TagPkgConfig{
+				"fedora": {Raw: map[string]any{"modules": []any{"valkey:remi-9.0"}}},
 			}},
 		},
 		Candies: map[string]spec.CandyView{"mylyr": {}},
