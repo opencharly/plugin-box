@@ -95,6 +95,7 @@ func runValidateEngine(ctx context.Context, exec *sdk.Executor, dir string, incl
 	}
 	project.ProviderCapabilities = wordSets.ProviderCapabilities
 	project.ActCapableVerbs = wordSets.ActCapableVerbs
+	project.ContentKinds = wordSets.ContentKinds
 
 	vc := newVctx(project)
 	e := &vErr{}
@@ -107,12 +108,9 @@ func runValidateEngine(ctx context.Context, exec *sdk.Executor, dir string, incl
 	runSchemaAndRemoteChecks(ctx, exec, vc, cfg, dir, opts, schema)
 	runRawConfigChecks(cfg, distroCfg, builderCfg, e)
 
-	// Skill nodes, composition-independent: the OWNERSHIP shape first (an image may not own a skill,
-	// opencharly/sdk#434), then the body of every remaining node. CollectSkills reads a body only for
-	// skills whose owner is in a composed box chain — a label-size policy — so a repo that authors
-	// skill nodes but composes no box had no check that could fail on an absent or misplaced body
-	// (opencharly/opencharly#530).
-	validateSkills(cfg, vc.dk, e)
+	// The nodes of CONTENT kinds (kind:skill first), composition-independent: each kind diagnoses its
+	// own nodes in project scope (validate_owned_content.go), the same rules its build install reads.
+	validateOwnedContent(cfg, vc.dk, wordSets.ContentKinds, invokeContentAsk(ctx, exec), e)
 
 	// Order is load-bearing for output parity: the resolve diagnostics, then the CUE/remote-candy
 	// findings (which the host used to contribute in exactly this slot), then the plugin's own
@@ -134,7 +132,8 @@ const validateWordSetsBuilderKind = "validate-word-sets"
 
 // fetchValidateWordSets asks the host the ONE question this plugin cannot answer for itself,
 // because the provider registry is a kernel M-mechanism: which of the project's `plugin:` words are
-// build/deploy act-capable, and what the full compiled-in capability set is.
+// build/deploy act-capable, what the full compiled-in capability set is, and which kinds serve
+// owned content (ops.OpContent).
 //
 // Both halves of the request are derived from the plugin's OWN envelope:
 //
