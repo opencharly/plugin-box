@@ -87,14 +87,19 @@ func validateCandyContents(vc *vctx, e *vErr) {
 		v := vc.views[name]
 		dk := vc.dk[name]
 
-		// At least one install file, a candy: composition, data, external_builder, OR a
-		// plugin: block — all legitimately ship no install files. HasInstallFiles is the core
-		// package/manifest/task/apk predicate (NOT the adapter's broad HasContent, which counts plan
-		// steps every ADE candy has), replicated from the envelope. (The candy-body `localpkg:` map
-		// is REMOVED — nFPM cutover — so it no longer counts as an install-file source.)
+		// At least one install file, a candy: composition, data, external_builder, a plugin: block,
+		// OR an owned `skill:` node — all legitimately ship no install files. HasInstallFiles is the
+		// core package/manifest/task/apk predicate (NOT the adapter's broad HasContent, which counts
+		// plan steps every ADE candy has), replicated from the envelope. (The candy-body `localpkg:`
+		// map is REMOVED — nFPM cutover — so it no longer counts as an install-file source.)
+		//
+		// An owned skill IS install content: charly's generator installs the body of every skill a
+		// composed candy owns under the image user's ~/.agents (sdk deploykit skills_install.go,
+		// opencharly/sdk#598), so a candy whose only job is to own skill nodes installs exactly those
+		// bodies. m.Skills is the per-candy ownership the resolve projects (opencharly/spec#254).
 		if !candyHasInstallFiles(m, dk) && len(v.IncludedCandy) == 0 && !dk.HasData() &&
-			!v.IsPlugin && m.ExternalBuilder == "" {
-			e.Add("candy %q: must have at least one install file (candy manifest distro: packages, root.yml, pixi.toml, pyproject.toml, environment.yml, package.json, Cargo.toml, or user.yml), a candy: field, an external_builder:, or a plugin: block", name)
+			!v.IsPlugin && m.ExternalBuilder == "" && len(m.Skills) == 0 {
+			e.Add("candy %q: must have at least one install file (candy manifest distro: packages, root.yml, pixi.toml, pyproject.toml, environment.yml, package.json, Cargo.toml, or user.yml), a candy: field, an external_builder:, a plugin: block, or an owned skill: node", name)
 		}
 
 		// ADE is MANDATORY per LOCAL candy: a non-empty description: + a plan: with ≥1 deterministic

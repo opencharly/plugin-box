@@ -453,7 +453,9 @@ check-box-local:
       # THE IMAGE-OWNER SHAPE (opencharly/sdk#434, operator ruling): an image candy
       # (`base:` / `from:`) may not own a `skill:`. The node is re-homed onto a package
       # candy the image composes, and until it is, validate must say so LOUDLY and name
-      # that fix. This is the product-boundary witness for validateSkillOwners.
+      # that fix. This is the product-boundary witness for kind:skill's image-owner
+      # diagnostic (opencharly/plugin-harness-kind), which validate asks for in project
+      # scope (validate_owned_content.go) — the rule a box build's skill install reads too.
       #
       # The control's body lives at the OWNING CANDY'S REPO ROOT, which for a candy inside
       # a project is the PROJECT ROOT — the layout every real skill owner uses (the candy
@@ -638,4 +640,63 @@ check-box-local:
             cat "$EV2"
             cat "$EV"
             echo BOX-SKILL-IMAGE-OWNER-OK
+          in_container: false
+      - check: >-
+          a candy whose ONLY content is the `skill:` node it owns validates clean, because
+          charly's generator installs every composed skill's body in the image
+          (opencharly/sdk#598) — and the SAME candy with the node removed is still refused
+          with the install-content finding, which now names an owned skill node as an
+          option. The first arm FAILS on the pre-fix engine (the candy has no package,
+          manifest, run step, composition, data, builder or plugin block, so the rule
+          refused it); the second keeps the rule from passing by accepting everything.
+        id: box-skill-owner-is-install-content
+        exit_status: 0
+        stdout:
+          - contains: BOX-SKILL-OWNER-CONTENT-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            D=$(mktemp -d)
+            D2=$(mktemp -d)
+            trap 'rm -rf "$D" "$D2"' EXIT
+            mkdir -p "$D/candy/carrier" "$D/.agents/skills/carrier-skill"
+            cat > "$D/charly.yml" <<'PROJ'
+            discover:
+                - path: candy
+                  recursive: true
+            PROJ
+            cat > "$D/candy/carrier/charly.yml" <<'CANDY'
+            carrier:
+                candy:
+                    description: owns one skill node and ships nothing else
+                    plan:
+                        - check: the fixture candy is loadable
+                          id: fixture-ok
+                          exit_status: 0
+                          command: "true"
+
+            carrier-skill:
+                skill:
+                    family: test
+                    owner: carrier
+            CANDY
+            printf -- '---\nname: carrier-skill\ndescription: the body the generator installs\n---\n\nBody prose at the repo root.\n' \
+              > "$D/.agents/skills/carrier-skill/SKILL.md"
+            set +e
+            OWN=$("${CHARLY_BIN}" -C "$D" box validate 2>&1); ORC=$?
+            set -e
+            echo "--- arm: candy owning a skill node (exit $ORC) ---"; echo "$OWN"
+            [ "$ORC" -eq 0 ] || { echo 'FAIL: a candy whose content is its owned skill was refused'; exit 1; }
+            cp -r "$D/." "$D2/"
+            sed -i '/^carrier-skill:/,$d' "$D2/candy/carrier/charly.yml"
+            rm -rf "$D2/.agents"
+            set +e
+            BARE=$("${CHARLY_BIN}" -C "$D2" box validate 2>&1); BRC=$?
+            set -e
+            echo "--- arm: the same candy owning nothing (exit $BRC) ---"; echo "$BARE"
+            [ "$BRC" -ne 0 ] || { echo 'FAIL: a candy with no content at all validated clean'; exit 1; }
+            echo "$BARE" | grep -q 'or an owned skill: node' || { echo 'FAIL: the finding does not name an owned skill node as install content'; exit 1; }
+            echo BOX-SKILL-OWNER-CONTENT-OK
           in_container: false
