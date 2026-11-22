@@ -111,6 +111,35 @@ check-box-local:
             echo CAPABILITY-NO-PROVIDERS-OK
           in_container: false
       - check: >-
+          the install-content rule reads the project's builder VOCABULARY, both ways: a candy
+          whose only content is a `mise.toml` validates clean (the vocabulary's mise builder
+          detects it), and a candy with no install content at all is still refused with the
+          install-file message. The first arm is what goes red if the rule stops passing the
+          vocabulary (opencharly/sdk#608); the second keeps the rule from passing everything.
+        id: box-builder-manifest-install-content
+        exit_status: 0
+        stdout:
+          - contains: INSTALL-CONTENT-OK
+        context:
+          - runtime
+        command:
+          command: |-
+            set -eu
+            D=$(mktemp -d)
+            trap 'rm -rf "$D"' EXIT
+            mkdir -p "$D/candy/m"
+            printf 'discover:\n    - path: candy\n      recursive: true\n' > "$D/charly.yml"
+            printf 'm:\n    candy:\n        description: only a mise manifest\n        plan:\n            - check: fixture loads\n              id: f\n              context:\n                - build\n              command: "true"\n' > "$D/candy/m/charly.yml"
+            printf '[tools]\njq = "1.7.1"\n' > "$D/candy/m/mise.toml"
+            OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
+            echo "$OUT" | grep -q 'must have at least one install file' && { echo 'FAIL: a mise-manifest-only candy was refused'; echo "$OUT"; exit 1; }
+            mkdir -p "$D/candy/n"
+            printf 'n:\n    candy:\n        description: no install content\n        plan:\n            - check: fixture loads\n              id: f\n              context:\n                - build\n              command: "true"\n' > "$D/candy/n/charly.yml"
+            OUT=$("${CHARLY_BIN}" -C "$D" box validate 2>&1 || true)
+            echo "$OUT" | grep -q 'must have at least one install file' || { echo 'FAIL: a candy with no install content was accepted'; echo "$OUT"; exit 1; }
+            echo INSTALL-CONTENT-OK
+          in_container: false
+      - check: >-
           a well-formed `<class>:<word>` pair whose class the closed vocabulary does not
           declare is reported as an UNKNOWN PROVIDER CLASS — naming the class and the set
           it was checked against — and is never called a grammar error (candy/plugin-box#24,

@@ -222,6 +222,14 @@ type vctx struct {
 	bk     map[string]*buildkit.ResolvedBox
 }
 
+// builders is the project's builder vocabulary (nil-safe: no envelope means no builders).
+func (vc *vctx) builders() map[string]*spec.Builder {
+	if vc.env == nil {
+		return nil
+	}
+	return vc.env.Builder
+}
+
 // newVctx builds the validation context from the (possibly nil / partial) resolved-project envelope.
 // A nil project (project-less dir) yields an empty context — every rule loops zero times and the
 // verdict is whatever host diagnostics carried.

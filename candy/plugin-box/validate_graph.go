@@ -13,8 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/opencharly/sdk/rawbody"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -61,9 +63,10 @@ func validateCandyDAG(vc *vctx, e *vErr) {
 	}
 }
 
-// validateBuilders runs the graph-portable candy-needs-builder DETECTION: for each resolved candy,
-// each builder in the env.Builder vocabulary that DETECTS the candy (by file OR by format section,
-// distro-gated) must be configured in the box's resolved builder map.
+// validateBuilders runs the candy-needs-builder check with THE trigger the build uses
+// (deploykit.NeedsBuilder — a detect file, or a manager declaration the box's tag chain selects,
+// opencharly/sdk#608): every builder a resolved candy needs on the box must be routed in the box's
+// resolved builder map. One rule, so validate and build can never disagree about a builder.
 //
 // NOTE (task #60): the defaults.builder + per-box builder/produce REFERENCE checks (cfg.Defaults.Builder,
 // ValidBuilderType, and the namespace-aware resolveBoxRef existence/capability lookups) are host-coupled
@@ -76,10 +79,7 @@ func validateBuilders(vc *vctx, e *vErr) {
 	for boxName := range vc.boxes {
 		box := vc.boxes[boxName]
 		resolved := spec.BuilderMap(box.Builder)
-		buildFmtSet := make(map[string]bool, len(box.BuildFormats))
-		for _, f := range box.BuildFormats {
-			buildFmtSet[f] = true
-		}
+		img := vc.bk[boxName]
 		candyOrder, err := deploykit.ResolveCandyOrder(box.Candy, vc.dk, nil)
 		if err != nil {
 			continue
@@ -89,24 +89,8 @@ func validateBuilders(vc *vctx, e *vErr) {
 			if !ok {
 				continue
 			}
-			for builderName, builderDef := range vc.env.Builder {
-				if builderDef == nil {
-					continue
-				}
-				fileMatched := false
-				for _, f := range builderDef.DetectFiles {
-					if dk.HasFile(f) {
-						fileMatched = true
-						break
-					}
-				}
-				configMatched := builderDef.DetectConfig != "" && candyHasFormatConfig(dk, builderDef.DetectConfig)
-				if !fileMatched && !configMatched {
-					continue
-				}
-				// Distro-aware gate: a format-section-only match is unreachable when the image's
-				// build formats don't include that format (the IR compiler iterates BuildFormats).
-				if !fileMatched && configMatched && !buildFmtSet[builderDef.DetectConfig] {
+			for _, builderName := range slices.Sorted(maps.Keys(vc.env.Builder)) {
+				if !deploykit.NeedsBuilder(dk, img, builderName, vc.env.Builder[builderName]) {
 					continue
 				}
 				if !resolved.HasBuilder(builderName) {
@@ -115,12 +99,6 @@ func validateBuilders(vc *vctx, e *vErr) {
 			}
 		}
 	}
-}
-
-// candyHasFormatConfig reports whether the candy has a non-empty package section for formatName.
-func candyHasFormatConfig(dk deploykit.CandyModel, formatName string) bool {
-	section := dk.FormatSection(formatName)
-	return section != nil && len(section.Packages) > 0
 }
 
 // validatePackagedServices validates use_packaged: entries + warns on packaged-only services in a
