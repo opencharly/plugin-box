@@ -27,6 +27,7 @@ package box
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,23 +54,50 @@ func runSchemaAndRemoteChecks(ctx context.Context, ex *sdk.Executor, vc *vctx, c
 
 // validateCandyCUESchemas validates each loaded candy's on-disk manifest against the candy CUE
 // schema (loaderkit.ValidateCandyManifestCUE — #Candy for a legacy kind-keyed manifest, #NodeDoc for
-// a node-form manifest). This is the sole candy-schema validator. Inline/synthesized candies with no
-// manifest file on disk are skipped.
+// a node-form manifest). This is the sole candy-schema validator.
 func validateCandyCUESchemas(ctx context.Context, ex *sdk.Executor, candies map[string]spec.CandyReader, e *vErr) {
 	threaded := loaderkit.LoaderThreadedViaExecutor(ctx, ex)
 	for name, c := range candies {
-		if c == nil || c.GetSourceDir() == "" {
+		if c == nil {
 			continue
 		}
-		f := filepath.Join(c.GetSourceDir(), spec.UnifiedFileName)
-		data, err := os.ReadFile(f)
-		if err != nil {
-			continue // remote/inline candy without a local manifest — skip
-		}
-		if verr := loaderkit.ValidateCandyManifestCUE(f, data, threaded, loaderkit.DocParser{}); verr != nil {
-			e.Add("candy %q: CUE schema: %v", name, verr)
+		if verr := candyManifestVerdict(c, name, threaded); verr != nil {
+			e.Add("%v", verr)
 		}
 	}
+}
+
+// candyManifestVerdict is the ONE per-candy verdict validateCandyCUESchemas applies, extracted so a
+// test can drive every arm without an executor.
+//
+// An INLINE candy synthesized by the engine has no manifest of its own, so it is skipped — its body
+// is gated by the load-time #NodeDoc gate. A REMOTE candy is different: the loader materializes its
+// repo into a view and records that view as its SourceDir, so a remote candy with no readable
+// manifest means the namespace did not materialize (or its manifest moved). Skipping that case
+// silently is what let `charly box validate` answer "0 errors" for a project whose imported
+// document the same binary refuses (opencharly/plugin-box#95): an imported candy whose manifest was
+// never read cannot be validated, and a rule that cannot see a document must say so rather than
+// pass. So the remote arm is an ERROR naming the candy and the path it expected.
+func candyManifestVerdict(c spec.CandyReader, name string, threaded spec.Threaded) error {
+	dir := c.GetSourceDir()
+	if dir == "" {
+		if c.GetRemote() {
+			return fmt.Errorf("candy %q: remote candy has no materialized source directory — its manifest cannot be validated (opencharly/plugin-box#95)", name)
+		}
+		return nil // inline/synthesized candy: no manifest of its own (gated at load)
+	}
+	f := filepath.Join(dir, spec.UnifiedFileName)
+	data, err := os.ReadFile(f)
+	if err != nil {
+		if c.GetRemote() {
+			return fmt.Errorf("candy %q: remote candy manifest unreadable at %s: %w (opencharly/plugin-box#95)", name, f, err)
+		}
+		return nil // inline/synthesized candy declared in another document
+	}
+	if verr := loaderkit.ValidateCandyManifestCUE(f, data, threaded, loaderkit.DocParser{}); verr != nil {
+		return fmt.Errorf("candy %q: CUE schema: %v", name, verr)
+	}
+	return nil
 }
 
 // validateProjectCUESchemas validates the project's non-candy entities against the CUE schemas.
