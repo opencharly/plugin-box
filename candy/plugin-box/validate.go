@@ -432,15 +432,28 @@ func emitVerdict(diags spec.Diagnostics, summary validateSummary) error {
 	// writes it replaced: those were at least actionable. A count nobody can act on is not a
 	// gate. They go to stderr so stdout stays the machine-readable verdict.
 	for _, it := range diags.Items {
-		if it.Severity == "warning" {
+		switch {
+		case it.IsError():
+			// Reported by the verdict below; printing here too would duplicate every failure.
+		case it.Severity == spec.SeverityWarning:
 			fmt.Fprintf(os.Stderr, "warning: %s\n", it.Message)
+		default:
+			// Resolvable observations (a candy-version skew the resolver already arbitrated) are
+			// INFORMATION: they are printed so they are actionable, and never gated.
+			fmt.Fprintf(os.Stderr, "notice: %s\n", it.Message)
 		}
 	}
 
 	msgs := make([]string, 0, len(diags.Items))
 	for _, it := range diags.Items {
-		if it.Severity == "warning" {
-			continue // the verdict counts ERROR-severity findings; the core validator emitted only errors
+		// The verdict turns ONLY error-severity findings into a non-zero exit — the contract
+		// spec.SeverityError states. The previous filter skipped just "warning", so "info" fell
+		// through and an ALREADY-ARBITRATED candy-version skew (sdk/loaderkit's DiagInfo: "a
+		// resolvable skew is INFO ... must not fail on a successful arbitration") failed
+		// `charly box validate` with exit 1, blocking every pin advance in a shared box scope.
+		// IsError() is the canonical predicate and fails CLOSED on an unknown tier.
+		if !it.IsError() {
+			continue
 		}
 		msgs = append(msgs, it.Message)
 	}
