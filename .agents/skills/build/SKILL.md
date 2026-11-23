@@ -227,12 +227,28 @@ build regardless of cache state, so excluding large never-COPYed directories is
 the dominant warm-rebuild win. BuildKit's dockerfile frontend reads `.dockerignore`;
 `.containerignore` is the engine-native name kept for engine-native builds — emitting both
 keeps the two readers in lockstep. Only add a
-directory you've confirmed no Containerfile COPY/ADDs from (generated
-Containerfiles COPY only from `candy/`, `templates/`, `.build/`). Source:
+directory you've confirmed no Containerfile COPY/ADDs from (generated Containerfiles COPY only
+from `candy/<name>/`, `.build/_candy/<name>.<version>/` and `.build/_content/<box>/` for a normal
+candy, plus — for an INLINE candy, whose directory is the build root — the exact paths its plan
+names; see below). Source:
 `candy/plugin-build/host_prep.go:writeContextIgnore` + `charly/host_build_buildengine.go`
 (`baselineContextIgnore`, the embedded `context_ignore_baseline` directive the
 `buildengine-context-ignore-baseline` seam serves; the former `charly/generate.go` is
 DELETED, K-wave 2).
+
+### A candy's scratch stage carries only what its plan reads
+
+Each candy that something copies from gets a `FROM scratch AS <candy>` stage, and a candy nothing
+copies from gets **none** — `copy:` steps and `data:` declarations are the only consumers of a
+candy scratch stage. An INLINE candy (declared in the project's root `charly.yml`, with no
+directory of its own) has the **build root** as its directory; it is staged by the exact paths its
+plan names, never with a whole-project `COPY ./ /`. That instruction used to exist and was pruned
+by BuildKit only because nothing referenced it — one `copy:` step would have put `.git`, `.check`
+run logs, `.build` staging and any local secret into the image's build graph, with the
+`context_ignore` denylist as its only protection (`opencharly/sdk#623`). A consumed candy whose
+sources cannot be expressed leaves a stage with no `COPY`, so the build fails naming the missing
+path instead of being silently served the project. Source: `sdk/deploykit/candy_stage.go`
+(`emitScratchStage`, `stageConsumed`, `stageSources`).
 
 ## Image-tag retention (`defaults.keep_images`)
 
