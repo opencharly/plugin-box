@@ -111,31 +111,6 @@ func TestCandyHasOrphanPackaged(t *testing.T) {
 	}
 }
 
-// TestValidateCandyApk ← charly/android_spec_test.go (moved with the engine). The apk⊕source cross-field
-// rule (source: applies only to package installs, never a committed apk:) is the one Go rule left after
-// #CandyApk took the package⊕apk one-of + source enum. Envelope-unit: a 1:1 helper port (the old test
-// called validateCandyApk(name, apks, errs) directly; the plugin owns it over *vErr).
-func TestValidateCandyApk(t *testing.T) {
-	cases := []struct {
-		name    string
-		apks    []spec.ApkPackageSpec
-		wantErr bool
-	}{
-		{"valid-package", []spec.ApkPackageSpec{{Package: "org.fdroid.fdroid", Source: "apk-pure"}}, false},
-		{"valid-committed", []spec.ApkPackageSpec{{Apk: "tests/data/x.apk"}}, false},
-		{"source-on-committed", []spec.ApkPackageSpec{{Apk: "y.apk", Source: "apk-pure"}}, true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			e := &vErr{}
-			validateCandyApk("test-layer", tc.apks, e)
-			if (len(e.msgs) > 0) != tc.wantErr {
-				t.Errorf("validateCandyApk(%+v): hasErr=%v want %v (%v)", tc.apks, len(e.msgs) > 0, tc.wantErr, e.msgs)
-			}
-		})
-	}
-}
-
 // TestAliasNameRegex ← charly/alias_collect_test.go TestAliasNameRegex (P14-rest dead-code sweep,
 // 2026-07): the charly-core copy of this regex had NO production call site left (validateAliases,
 // the actual enforcement, lives here — this file's aliasNameRe, above in validate_rules.go — not in

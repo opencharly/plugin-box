@@ -89,7 +89,7 @@ func validateCandyContents(vc *vctx, e *vErr) {
 
 		// At least one install file, a candy: composition, data, external_builder, a plugin: block,
 		// OR an owned `skill:` node — all legitimately ship no install files. HasInstallFiles is the
-		// core package/manifest/task/apk predicate (NOT the adapter's broad HasContent, which counts
+		// core package/manifest/task predicate (NOT the adapter's broad HasContent, which counts
 		// plan steps every ADE candy has), replicated from the envelope. (The candy-body `localpkg:`
 		// map is REMOVED — nFPM cutover — so it no longer counts as an install-file source.)
 		//
@@ -199,7 +199,6 @@ func validateCandyContents(vc *vctx, e *vErr) {
 		}
 
 		validateCandyShell(name, m.Shell, e)
-		validateCandyApk(name, m.Apk, e)
 	}
 }
 
@@ -255,16 +254,6 @@ func splitPluginCapability(s string) (class, word string, fault pluginCapability
 		return c, s[i+1:], capFaultUnknownClass
 	}
 	return c, s[i+1:], capFaultNone
-}
-
-// validateCandyApk enforces the apk: cross-field rule CUE cannot express (source: applies only to
-// apkeep package installs, never a committed apk: file).
-func validateCandyApk(candyName string, apks []spec.ApkPackageSpec, e *vErr) {
-	for i, a := range apks {
-		if a.Apk != "" && a.Source != "" {
-			e.Add("candy %q apk[%d]: `source:` applies only to `package:` (apkeep) installs, not committed `apk:` files", candyName, i)
-		}
-	}
 }
 
 // validateCandyShell enforces the shell:-schema init/path semantics.
@@ -879,14 +868,14 @@ func validateBuildTask(candyName string, idx int, t *spec.Op, e *vErr) {
 // --- pure helpers (copied verbatim across the core/plugin module boundary) ---
 
 // candyHasInstallFiles replicates the core Candy.HasInstallFiles predicate from the envelope (package
-// sections / manifests / tasks / apk / extract) — NOT the adapter's broad HasContent (which counts plan
+// sections / manifests / tasks / extract) — NOT the adapter's broad HasContent (which counts plan
 // steps every ADE candy has, so it would never flag a content-less candy). `extract:` counts: it is a
 // first-class install mechanism (spec/schema/candy.cue #CandyExtract, rendered by
 // sdk/deploykit/candy_stage.go) — a candy that pulls binaries out of another OCI image ships no
 // package/manifest/task files, and agentteams is the first consumer to rely on that.
 func candyHasInstallFiles(m spec.CandyModel, dk deploykit.CandyModel, builders map[string]*spec.Builder) bool {
 	return candyHasTagPackages(m) || len(m.TopPackages) > 0 || candyHasBuilderManifest(dk, builders) ||
-		len(m.RunOps) > 0 || len(m.Apk) > 0 || dk.HasExtract()
+		len(m.RunOps) > 0 || dk.HasExtract()
 }
 
 // candyHasBuilderManifest reports whether the candy carries a manifest one of the vocabulary's
